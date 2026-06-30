@@ -1,0 +1,18 @@
+APPli Info:  {"id":7498,"applicantName":"Olayemi Abunsango",
+"applicantRsaPin":"PEN110156897384","applicantRsaBal":"794,884.32",
+"applicationDate":"2025-11-15T18:50:21.493Z","benefitType":"Minimum PW to Enbloc Withdrawal",
+"employer":"Norrenberger Pensions Limited","age":41,"approvedBy":"Olayemi Abunsango",
+"phone":"08036032790","statusId":14,"status":"Approved by Compliance","taskOwner":"FinCon",
+"taskOwnerId":7,"docId":null,"docPath":null,"folderPath":"https://norrenberger.sharepoint.com/sites/BenefitTracker/BenefitDocs/Olayemi-Abunsango-MinimumPWtoEnblocWithdrawal%202",
+"folderId":"01LGSE5ZTMHTSOQOXN4VHLZDWKZBZ5DW3M","gender":"M","fundType":"FUND2",
+"comment":"This is a test request. Please, do not treat."}
+
+
+
+smartpen | 2025-11-19 13:34:27: Executing stored procedure SendSmsForSMPReg with params: sender_id=NorrenPens, pin=PEN110233561259, phone=08028804647, channel=SMPREG
+5|smartpen | 2025-11-19 13:34:27: Failed to send SMS: ('42000', '[42000] [Microsoft][ODBC Driver 18 for SQL Server][SQL Server]The operation could not be performed 
+because OLE DB provider "MSOLEDBSQL" for linked server "SMS_SERVER" was unable to begin a distributed transaction. (7391) (SQLExecDirectW); [42000] [Microsoft][ODBC
+ Driver 18 for SQL Server][SQL Server]OLE DB provider "MSOLEDBSQL" for linked server "SMS_SERVER" returned message "The partner transaction manager has disabled its 
+ support for remote/network transactions.". (7412)')
+
+ -- 

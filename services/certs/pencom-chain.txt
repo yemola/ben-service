@@ -1,0 +1,102 @@
+CONNECTED(000001C4)
+---
+Certificate chain
+ 0 s:CN=*.pencom.gov.ng
+   i:C=GB, ST=Greater Manchester, L=Salford, O=Sectigo Limited, CN=Sectigo RSA Domain Validation Secure Server CA
+   a:PKEY: rsaEncryption, 2048 (bit); sigalg: RSA-SHA256
+   v:NotBefore: Apr  8 00:00:00 2025 GMT; NotAfter: Apr  8 23:59:59 2026 GMT
+-----BEGIN CERTIFICATE-----
+MIIGNjCCBR6gAwIBAgIQC35DCjOZb970yMZ7PFyNWTANBgkqhkiG9w0BAQsFADCB
+jzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
+A1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQD
+Ey5TZWN0aWdvIFJTQSBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENB
+MB4XDTI1MDQwODAwMDAwMFoXDTI2MDQwODIzNTk1OVowGjEYMBYGA1UEAwwPKi5w
+ZW5jb20uZ292Lm5nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA09XS
+pclWfz18p9U1d3YWOnlV/SZNf4Qt9VwJsPoMuwsENt0r/Q2tY9i4cx+2L78VIh+9
+8Dk8zmRK2+IDrvnO3fi+HE6rSlS+wgx2NKaJFP+gXh6gJXt6e40GzNiyaJRpkvzP
+Gn16CRO/3yqtgtDIdAqcF5V60nrXLJUDUIzHw8O1oE7VNwMTLmE4P7XLK48Q+d83
+Ijs6Bg9BSjiGZ+9XZbaT+OpB8HgY2NcL1bc+TzL9Or9Dq5JWj0e7a8rqMCurCZpC
+FHYkcRX19BRpnYq13E5G0usDw/bupiUVoqJrTC5skR9kFtk/BvJHhy1X3GgJjnLE
+rJS6KRJTUVIa2Bnt9QIDAQABo4IDADCCAvwwHwYDVR0jBBgwFoAUjYxexFStiuF3
+6Zv5mwXhuAGNYeEwHQYDVR0OBBYEFKPRA7DlSUprOk4NuG/QaS1xLuePMA4GA1Ud
+DwEB/wQEAwIFoDAMBgNVHRMBAf8EAjAAMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggr
+BgEFBQcDAjBJBgNVHSAEQjBAMDQGCysGAQQBsjEBAgIHMCUwIwYIKwYBBQUHAgEW
+F2h0dHBzOi8vc2VjdGlnby5jb20vQ1BTMAgGBmeBDAECATCBhAYIKwYBBQUHAQEE
+eDB2ME8GCCsGAQUFBzAChkNodHRwOi8vY3J0LnNlY3RpZ28uY29tL1NlY3RpZ29S
+U0FEb21haW5WYWxpZGF0aW9uU2VjdXJlU2VydmVyQ0EuY3J0MCMGCCsGAQUFBzAB
+hhdodHRwOi8vb2NzcC5zZWN0aWdvLmNvbTApBgNVHREEIjAggg8qLnBlbmNvbS5n
+b3YubmeCDXBlbmNvbS5nb3YubmcwggF+BgorBgEEAdZ5AgQCBIIBbgSCAWoBaAB3
+AJaXZL9VWJet90OHaDcIQnfp8DrV9qTzNm5GpD8PyqnGAAABlhOzuDgAAAQDAEgw
+RgIhAJZc5JQrhz49+bDgti8mcvaYR4tq5qwfLJzQhW6csGpuAiEAtijhsmn0MRPz
+hBdDU2Rvi4t8kulO7Hkh5H8rucKqcfEAdQAZhtTHKKpv/roDb3gqTQGRqs4tcjEP
+rs5dcEEtJUzH1AAAAZYTs7f+AAAEAwBGMEQCIAhcHZf7iO9hsYyFW2uATGORuDGA
+vYzCPMCZM+WIRT2mAiBUxONYmxz/uqaabibyTsR8bKclW9BeG5LCyE2Yl+W/6gB2
+AA5XlLzzrqk+MxssmQez95Dfm8I9cTIl3SGpJaxhxU4hAAABlhOzt9wAAAQDAEcw
+RQIgR9l/KEMiWzGMUnehE1zWEagFn87PyxfsDDpvbgL2HNgCIQDXrxukyZ589MEv
+g4kMVYNyFxtcx+QcOcugG/JC/NeZHjANBgkqhkiG9w0BAQsFAAOCAQEAaeHjLuuy
+tBGZtiMaaPSzWX9EEwJGoY8Iqv48JcBPJa/lDQTgcJVkbCVtDEBA17NvL1Nz9k7f
+CMAFH6e+7HLlNsbEZ5un/fmd/OokCgC1QuJRTAkanK4qSWbAZCECkeLKyk2jMyFr
+rpMq0XaFF6JF6TyQu3ffLtlz+t3JvaNjS+d0LeONiHrNVH8nUgtvhr/Q6kWeRaqb
+G/NENjCwc7IXnb+m6ZOxpPEwwjI6T5SLSjn1rvMXvRhSvk7oIewvS6gzVnchiNp+
+7FxqaRjLVDlnNKryB+5YgzHmztxlCjMevuTwy6D2VkfNjh/aGT7MfUuT6xAQY+19
+m89UijT1d+JvcQ==
+-----END CERTIFICATE-----
+---
+Server certificate
+subject=CN=*.pencom.gov.ng
+issuer=C=GB, ST=Greater Manchester, L=Salford, O=Sectigo Limited, CN=Sectigo RSA Domain Validation Secure Server CA
+---
+No client certificate CA names sent
+Peer signing digest: SHA256
+Peer signature type: RSA-PSS
+Server Temp Key: X25519, 253 bits
+---
+SSL handshake has read 2255 bytes and written 422 bytes
+Verification error: unable to verify the first certificate
+---
+New, TLSv1.2, Cipher is ECDHE-RSA-AES256-GCM-SHA384
+Protocol: TLSv1.2
+Server public key is 2048 bit
+Secure Renegotiation IS supported
+Compression: NONE
+Expansion: NONE
+No ALPN negotiated
+SSL-Session:
+    Protocol  : TLSv1.2
+    Cipher    : ECDHE-RSA-AES256-GCM-SHA384
+    Session-ID: 2588FF0CD7A3E9623D778F4CE5A948025E20D44B0C5D3892174AB9C4B226490F
+    Session-ID-ctx: 
+    Master-Key: 9B1AEC9B47635B275EA860486D359F1377E9CF5EE01DB7D469A923E997AEE1482A5EE730B93B5723661D9FC7A9D4C095
+    PSK identity: None
+    PSK identity hint: None
+    SRP username: None
+    TLS session ticket lifetime hint: 300 (seconds)
+    TLS session ticket:
+    0000 - 6d 92 60 47 b1 04 ca a7-de 3b 05 67 da cb 79 18   m.`G.....;.g..y.
+    0010 - ef b3 29 90 7e 62 55 8d-20 c8 dc a2 39 97 a9 6b   ..).~bU. ...9..k
+    0020 - ab 59 1c d2 07 72 2f 22-58 0d ef 2d 49 9b 56 86   .Y...r/"X..-I.V.
+    0030 - 51 a6 e3 64 80 ac 3c b4-e6 a7 87 a8 5a ed 6c ca   Q..d..<.....Z.l.
+    0040 - ee 1a 1b 32 4d 2f ba 52-46 b8 48 57 92 6b 38 f9   ...2M/.RF.HW.k8.
+    0050 - 3e 88 fd 7a 7e 00 09 30-47 34 56 2b 68 7a ee 8b   >..z~..0G4V+hz..
+    0060 - b1 15 37 62 be e3 16 54-87 41 64 50 94 8d a5 68   ..7b...T.AdP...h
+    0070 - 95 3d d2 6a 17 7c 8b b3-ec 89 66 29 68 c8 5c 9a   .=.j.|....f)h.\.
+    0080 - a7 f4 ab dd bd 1b a3 3f-fd 92 6f 4c 0d 24 e5 ca   .......?..oL.$..
+    0090 - b4 96 7a 96 56 07 05 1e-d2 8f f0 54 b9 e5 26 e3   ..z.V......T..&.
+    00a0 - 8c e8 33 a4 e1 d7 7f 80-5c 53 a7 2e 1f ac 36 87   ..3.....\S....6.
+    00b0 - 8f 89 59 78 74 3f f1 b1-d5 93 9f 85 1e e8 64 a7   ..Yxt?........d.
+
+    Start Time: 1753704550
+    Timeout   : 7200 (sec)
+    Verify return code: 21 (unable to verify the first certificate)
+    Extended master secret: yes
+---
+HTTP/1.0 408 Request Time-out
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+<html><body><h1>
+408 Request Time-out</h1>
+Your browser didn't send a complete request in time.
+</body></html>
+closed

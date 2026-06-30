@@ -1,0 +1,142 @@
+{
+  "totalSites": 27,
+  "processedSites": [
+    {
+      "siteName": "Audit",
+      "status": "Success",
+      "duration": 11.103
+    },
+    {
+      "siteName": "Benefits Sub-site",
+      "status": "Success",
+      "duration": 1159.645
+    },
+    {
+      "siteName": "Cash advice (Dividend and Coupon payment notification) from PFCs",
+      "status": "Success",
+      "duration": 3.768
+    },
+    {
+      "siteName": "CSD",
+      "status": "Success",
+      "duration": 35.703
+    },
+    {
+      "siteName": "Home",
+      "status": "Success",
+      "duration": 11.471
+    },
+    {
+      "siteName": "Management Fee",
+      "status": "Success",
+      "duration": 2.977
+    },
+    {
+      "siteName": "MD's Office",
+      "status": "Success",
+      "duration": 13.409
+    },
+    {
+      "siteName": "Memo Sub-site",
+      "status": "Success",
+      "duration": 3.303
+    },
+    {
+      "siteName": "NPL Admin and Facility",
+      "status": "Success",
+      "duration": 3.666
+    },
+    {
+      "siteName": "NPL Asset Management",
+      "status": "Success",
+      "duration": 3.291
+    },
+    {
+      "siteName": "NPL BDS",
+      "status": "Success",
+      "duration": 3.125
+    },
+    {
+      "siteName": "NPL Client Services",
+      "status": "Success",
+      "duration": 2.936
+    },
+    {
+      "siteName": "NPL Corporate Services",
+      "status": "Success",
+      "duration": 2.668
+    },
+    {
+      "siteName": "NPL Credit",
+      "status": "Success",
+      "duration": 2.943
+    },
+    {
+      "siteName": "NPL Digital Marketing and Brands",
+      "status": "Success",
+      "duration": 3.079
+    },
+    {
+      "siteName": "NPL ERMD",
+      "status": "Success",
+      "duration": 2.826
+    },
+    {
+      "siteName": "NPL Fund Accounting",
+      "status": "Success",
+      "duration": 3.318
+    },
+    {
+      "siteName": "NPL Internal Control and Compliance",
+      "status": "Failed",
+      "error": "Site \"NPL Internal Control and Compliance\" not found in tenant \"norrenpensions\""
+    },
+    {
+      "siteName": "NPL Investment",
+      "status": "Failed",
+      "error": "Site \"NPL Investment\" not found in tenant \"norrenpensions\""
+    },
+    {
+      "siteName": "NPL Legal",
+      "status": "Success",
+      "duration": 3.582
+    },
+    {
+      "siteName": "NPL Migration",
+      "status": "Failed",
+      "error": "Site \"NPL Migration\" not found in tenant \"norrenpensions\""
+    },
+    {
+      "siteName": "NPL Operations",
+      "status": "Success",
+      "duration": 5.426
+    },
+    {
+      "siteName": "NPL Reconciliation",
+      "status": "Success",
+      "duration": 13.399
+    },
+    {
+      "siteName": "NPL RSA",
+      "status": "Success",
+      "duration": 709.658
+    },
+    {
+      "siteName": "NPL Technology and Innovation",
+      "status": "Success",
+      "duration": 3.504
+    },
+    {
+      "siteName": "NPL-Funds-Correspondence",
+      "status": "Success",
+      "duration": 3.602
+    },
+    {
+      "siteName": "Reports",
+      "status": "Success",
+      "duration": 3.941
+    }
+  ],
+  "startTime": "2026-02-18T11:19:04.143Z",
+  "endTime": "2026-02-18T11:52:32.382Z"
+}

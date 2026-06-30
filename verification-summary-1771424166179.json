@@ -1,0 +1,425 @@
+[
+  {
+    "siteName": "Audit",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 1,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 2,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Benefits Sub-site",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 938,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 941,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Cash advice (Dividend and Coupon payment notification) from PFCs",
+    "status": "MISMATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 1,
+      "folders": 0,
+      "size": "42.55 KB",
+      "sizeBytes": 43567
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "CSD",
+    "status": "MISMATCH",
+    "old": {
+      "files": 0,
+      "folders": 8,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 13,
+      "folders": 93,
+      "size": "18.86 MB",
+      "sizeBytes": 19780266
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Home",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 6,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 6,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Management Fee",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "MD's Office",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Memo Sub-site",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Admin and Facility",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Asset Management",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL BDS",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Client Services",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Corporate Services",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Credit",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Digital Marketing and Brands",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL ERMD",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Fund Accounting",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Internal Control and Compliance",
+    "status": "ERROR",
+    "error": "Request failed with status code 404"
+  },
+  {
+    "siteName": "NPL Investment",
+    "status": "ERROR",
+    "error": "Request failed with status code 404"
+  },
+  {
+    "siteName": "NPL Legal",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Migration",
+    "status": "ERROR",
+    "error": "Request failed with status code 404"
+  },
+  {
+    "siteName": "NPL Operations",
+    "status": "MATCH",
+    "old": {
+      "files": 1,
+      "folders": 2,
+      "size": "3.41 MB",
+      "sizeBytes": 3571793
+    },
+    "new": {
+      "files": 1,
+      "folders": 2,
+      "size": "3.41 MB",
+      "sizeBytes": 3571793
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Reconciliation",
+    "status": "MATCH",
+    "old": {
+      "files": 1,
+      "folders": 0,
+      "size": "1.77 MB",
+      "sizeBytes": 1854226
+    },
+    "new": {
+      "files": 1,
+      "folders": 0,
+      "size": "1.77 MB",
+      "sizeBytes": 1854226
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL RSA",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 489,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 489,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL Technology and Innovation",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "NPL-Funds-Correspondence",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  },
+  {
+    "siteName": "Reports",
+    "status": "MATCH",
+    "old": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "new": {
+      "files": 0,
+      "folders": 0,
+      "size": "0 B",
+      "sizeBytes": 0
+    },
+    "mismatches": 0
+  }
+]

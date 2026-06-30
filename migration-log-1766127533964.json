@@ -1,0 +1,51 @@
+{
+  "totalFolders": 2553,
+  "migratedFolders": 2553,
+  "failedFolders": [],
+  "totalFiles": 29047,
+  "migratedFiles": 27129,
+  "failedFiles": [
+    {
+      "folderName": "Aminu-Omopupa-EnBloc-Private",
+      "fileName": "13_letter_of_appointmen-Aminu-Omopupa.pdf",
+      "error": "write EPIPE"
+    },
+    {
+      "folderName": "Anietie-Emmanuel-Twenty-FivePercent-Private",
+      "fileName": "11_bank_confirmation_of-Anietie-Emmanuel.pdf",
+      "error": "write EPIPE"
+    },
+    {
+      "folderName": "Asmau-Zarma-Mortgage",
+      "fileName": "04_marriage_certificate-Asmau-Zarma.pdf",
+      "error": "read ETIMEDOUT"
+    },
+    {
+      "folderName": "Ike-Okoro-Mortgage",
+      "fileName": "02_handwritten_applicat-Ike-Okoro.pdf",
+      "error": "read ETIMEDOUT"
+    },
+    {
+      "folderName": "Innocent-Gwatana-Mortgage",
+      "fileName": "17_confirmation_of_avai-Innocent-Gwatana.pdf",
+      "error": "Request failed with status code 503"
+    },
+    {
+      "folderName": "Mohammed-Ubale-EnBloc",
+      "fileName": "01_pfa_application_form-Mohammed-Ubale.pdf",
+      "error": "Request failed with status code 503"
+    },
+    {
+      "folderName": "Mohammed-Ubale-EnBloc",
+      "fileName": "02_application_letter_b-Mohammed-Ubale.pdf",
+      "error": "Request failed with status code 503"
+    },
+    {
+      "folderName": "Zebulon-Ejiogu-RetirementProgramWithdrawal-Public",
+      "fileName": "09_application_letter_f-Zebulon-Ejiogu.pdf",
+      "error": "read ETIMEDOUT"
+    }
+  ],
+  "startTime": "2025-12-18T12:20:19.238Z",
+  "endTime": "2025-12-19T06:58:53.962Z"
+}
