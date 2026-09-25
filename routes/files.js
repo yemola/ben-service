@@ -43,6 +43,70 @@ async function getAccessToken() {
 
 }
 
+async function getAllGraphFiles(url, accessToken) {
+    const files = [];
+    let nextUrl = url;
+
+    while (nextUrl) {
+        const response = await axios.get(nextUrl, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            },
+            timeout: 30000
+        });
+
+        files.push(
+            ...(response.data.value || [])
+        );
+
+        nextUrl =
+            response.data['@odata.nextLink'] || null;
+    }
+
+    return files;
+}
+
+function detectFileType(buffer) {
+    if (!Buffer.isBuffer(buffer)) {
+        return null;
+    }
+
+    // PDF
+    if (
+        buffer.length >= 4 &&
+        buffer.subarray(0, 4).toString('ascii') === '%PDF'
+    ) {
+        return 'pdf';
+    }
+
+    // JPEG
+    if (
+        buffer.length >= 3 &&
+        buffer[0] === 0xFF &&
+        buffer[1] === 0xD8 &&
+        buffer[2] === 0xFF
+    ) {
+        return 'jpeg';
+    }
+
+    // PNG
+    if (
+        buffer.length >= 8 &&
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4E &&
+        buffer[3] === 0x47 &&
+        buffer[4] === 0x0D &&
+        buffer[5] === 0x0A &&
+        buffer[6] === 0x1A &&
+        buffer[7] === 0x0A
+    ) {
+        return 'png';
+    }
+
+    return null;
+}
+
 router.post('/', async (req, res) => {
     try {
         const { docId } = req.body;
@@ -239,7 +303,7 @@ router.post('/folder', async (req, res) => {
             docOrder: docOrderMap.get(file.id) || null, // Include docOrder in response
             dbId: dbIdMap.get(file.id) || null, // Include database id in response
         }));
-        
+
         console.log('DownloadURL: ', formattedFiles[0]);
 
         // Send the formatted response to the frontend
@@ -511,88 +575,301 @@ router.put('/delete-file', async (req, res) => {
 });
 
 router.post('/merge-docs', async (req, res) => {
-    console.log('Payload: ', req.body);
+    console.log('Payload:', req.body);
 
     try {
         const { folderId, clientName } = req.body;
-        if (!folderId) return res.status(400).json({ message: 'folderId is required' });
+
+        if (!folderId) {
+            return res.status(400).json({
+                message: 'folderId is required'
+            });
+        }
 
         const pool = await connectToDatabase('BenefitTracker_v2');
+
         const result = await pool
             .request()
             .input('folderId', folderId)
-            .query('SELECT folder_name, folder_path FROM BenefitTracker_v2.dbo.Applications WHERE folder_id = @folderId');
+            .query(`
+                SELECT folder_name
+                FROM BenefitTracker_v2.dbo.Applications
+                WHERE folder_id = @folderId
+            `);
 
         const folderName = result.recordset[0]?.folder_name;
-        const folderPath = result.recordset[0]?.folder_path;
-        if (!folderName) return res.status(404).json({ message: 'Folder not found in DB' });
 
-        // Determine which tenant to use based on folder_path
-        const tenantConfig = getTenantConfig(folderPath);
-        const accessToken = await getAccessTokenForTenant(tenantConfig);
-        const encodedFolderName = encodeURIComponent(folderName);
-        const url = `https://graph.microsoft.com/v1.0/drives/${tenantConfig.driveId}/root:/${encodedFolderName}:/children`;
-
-        const folderResponse = await axios.get(url, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-
-        const files = folderResponse.data.value;
-        if (!files || files.length === 0) {
-            return res.status(404).json({ message: 'No files found in the folder.' });
+        if (!folderName) {
+            return res.status(404).json({
+                message: 'Folder not found in DB'
+            });
         }
 
+        const accessToken = await getAccessToken();
 
-        //LOG FILES INFO 
-        // console.log('Files in SharePoint folder:', files.map(f => ({
-        //     id: f.id,
-        //     name: f.name,
-        //     createdDateTime: f.createdDateTime,
-        //     mimeType: f.file?.mimeType
-        // })));
+        const encodedFolderName =
+            encodeURIComponent(folderName);
 
-        const fileBuffers = [];
-        const supportedExtensions = ['.pdf', '.jpg', '.jpeg', '.png'];
+        const url =
+            `https://graph.microsoft.com/v1.0/drives/${driveId}` +
+            `/root:/${encodedFolderName}:/children`;
 
-        for (const file of files) {
-            // Skip folders or unsupported file types
-            if (file.folder) continue;
+        /*
+         * Get all files from SharePoint, including
+         * additional pages returned by Microsoft Graph.
+         */
+        const files = await getAllGraphFiles(
+            url,
+            accessToken
+        );
 
-            const extension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-            if (!supportedExtensions.includes(extension)) continue;
+        if (!files.length) {
+            return res.status(404).json({
+                message: 'No files found in the folder.'
+            });
+        }
 
-            const downloadUrl = file['@microsoft.graph.downloadUrl'];
-            if (!downloadUrl) continue;
+        const supportedExtensions = new Set([
+            '.pdf',
+            '.jpg',
+            '.jpeg',
+            '.png'
+        ]);
 
-            try {
-                const fileResponse = await axios.get(downloadUrl, {
-                    responseType: 'arraybuffer', // important to get binary data
-                });
+        /*
+         * First filter the SharePoint results.
+         * Nothing is downloaded until we know we want it.
+         */
+        const candidateFiles = files.filter(file => {
+            if (file.folder) {
+                return false;
+            }
 
-                fileBuffers.push({
+            const extension =
+                path.extname(file.name).toLowerCase();
+
+            return supportedExtensions.has(extension);
+        });
+
+        if (!candidateFiles.length) {
+            return res.status(404).json({
+                message:
+                    'No supported documents found in the folder.'
+            });
+        }
+
+        /*
+         * Download documents concurrently.
+         *
+         * Promise.allSettled() is used instead of Promise.all()
+         * so one bad document does not prevent the other
+         * documents from being downloaded.
+         */
+        const downloadResults = await Promise.allSettled(
+            candidateFiles.map(async file => {
+                const extension =
+                    path.extname(file.name).toLowerCase();
+
+                const downloadUrl =
+                    file['@microsoft.graph.downloadUrl'];
+
+                if (!downloadUrl) {
+                    throw new Error(
+                        'No download URL'
+                    );
+                }
+
+                const response = await axios.get(
+                    downloadUrl,
+                    {
+                        responseType: 'arraybuffer',
+                        timeout: 30000
+                    }
+                );
+
+                const buffer =
+                    Buffer.from(response.data);
+
+                if (!buffer.length) {
+                    throw new Error(
+                        'File is empty'
+                    );
+                }
+
+                /*
+                 * Determine the actual type from the
+                 * binary content rather than trusting
+                 * the filename extension.
+                 */
+                const type =
+                    detectFileType(buffer);
+
+                if (!type) {
+                    throw new Error(
+                        'Unknown or invalid file format'
+                    );
+                }
+
+                return {
                     name: file.name,
                     ext: extension,
-                    buffer: fileResponse.data,
+                    type,
+                    buffer
+                };
+            })
+        );
+
+        const fileBuffers = [];
+        const failedFiles = [];
+
+        for (let i = 0; i < downloadResults.length; i++) {
+            const result = downloadResults[i];
+            const file = candidateFiles[i];
+
+            if (result.status === 'fulfilled') {
+                fileBuffers.push(result.value);
+
+                console.log(
+                    'Document ready:',
+                    {
+                        name: result.value.name,
+                        extension: result.value.ext,
+                        type: result.value.type,
+                        size: result.value.buffer.length
+                    }
+                );
+            } else {
+                failedFiles.push({
+                    name: file.name,
+                    error: result.reason?.message
                 });
-            } catch (err) {
-                console.warn(`Error downloading file ${file.name}:`, err.message);
+
+                console.warn(
+                    `Failed to process ${file.name}:`,
+                    result.reason?.message
+                );
             }
         }
 
-        const mergedPdfPath = await combineDocuments(fileBuffers, clientName);
+        if (!fileBuffers.length) {
+            return res.status(500).json({
+                message:
+                    'None of the documents could be processed.',
+                failedFiles
+            });
+        }
 
-        const fileBuffer = fs.readFileSync(mergedPdfPath);
+        console.log(
+            `Preparing ${fileBuffers.length} document(s) for merging`
+        );
+
+        const mergedPdfPath =
+            await combineDocuments(
+                fileBuffers,
+                clientName
+            );
+
+        const fileBuffer =
+            await fs.promises.readFile(
+                mergedPdfPath
+            );
 
         res.set({
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${clientName}-combined.pdf"`,
+            'Content-Disposition':
+                `attachment; filename="${clientName}-combined.pdf"`
         });
-        res.send(fileBuffer);
+
+        return res.send(fileBuffer);
+
     } catch (error) {
-        console.error('Error combining documents:', error.message);
-        res.status(500).json({ message: 'Failed to combine documents', error: error.message });
+        console.error(
+            'Error combining documents:',
+            {
+                message: error.message,
+                stack: error.stack
+            }
+        );
+
+        return res.status(500).json({
+            message: 'Failed to combine documents',
+            error: error.message
+        });
     }
 });
+
+// router.post('/merge-docs', async (req, res) => {
+//     console.log('Payload: ', req.body);
+
+//     try {
+//         const { folderId, clientName } = req.body;
+//         if (!folderId) return res.status(400).json({ message: 'folderId is required' });
+
+//         const pool = await connectToDatabase('BenefitTracker_v2');
+//         const result = await pool
+//             .request()
+//             .input('folderId', folderId)
+//             .query('SELECT folder_name FROM BenefitTracker_v2.dbo.Applications WHERE folder_id = @folderId');
+
+//         const folderName = result.recordset[0]?.folder_name;
+//         if (!folderName) return res.status(404).json({ message: 'Folder not found in DB' });
+
+//         const accessToken = await getAccessToken();
+//         const encodedFolderName = encodeURIComponent(folderName);
+//         const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodedFolderName}:/children`;
+
+//         const folderResponse = await axios.get(url, {
+//             headers: { Authorization: `Bearer ${accessToken}` },
+//         });
+
+//         const files = folderResponse.data.value;
+//         if (!files || files.length === 0) {
+//             return res.status(404).json({ message: 'No files found in the folder.' });
+//         }
+
+//         const fileBuffers = [];
+//         const supportedExtensions = ['.pdf', '.jpg', '.jpeg', '.png'];
+
+//         for (const file of files) {
+//             // Skip folders or unsupported file types
+//             if (file.folder) continue;
+
+//             const extension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+//             if (!supportedExtensions.includes(extension)) continue;
+
+//             const downloadUrl = file['@microsoft.graph.downloadUrl'];
+//             if (!downloadUrl) continue;
+
+//             try {
+//                 const fileResponse = await axios.get(downloadUrl, {
+//                     responseType: 'arraybuffer', // important to get binary data
+//                 });
+
+//                 fileBuffers.push({
+//                     name: file.name,
+//                     ext: extension,
+//                     buffer: fileResponse.data,
+//                 });
+//             } catch (err) {
+//                 console.warn(`Error downloading file ${file.name}:`, err.message);
+//             }
+//         }
+
+//         const mergedPdfPath = await combineDocuments(fileBuffers, clientName);
+
+//         const fileBuffer = fs.readFileSync(mergedPdfPath);
+
+//         res.set({
+//             'Content-Type': 'application/pdf',
+//             'Content-Disposition': `attachment; filename="${clientName}-combined.pdf"`,
+//         });
+//         res.send(fileBuffer);
+//     } catch (error) {
+//         console.error('Error combining documents:', error.message);
+//         res.status(500).json({ message: 'Failed to combine documents', error: error.message });
+//     }
+// });
+
 
 router.put('/replace-file', upload.single('newFile'), async (req, res) => {
     try {

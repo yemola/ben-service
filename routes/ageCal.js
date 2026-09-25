@@ -1,14 +1,37 @@
 function calculateAge(dateOfBirth) {
-    let dob = new Date(dateOfBirth);
-    let today = new Date();
+    if (!dateOfBirth) {
+        return null;
+    }
 
-    let age = today.getFullYear() - dob.getFullYear();
+    // SQL Server dates arrive as Date objects; preserve their UTC calendar date.
+    if (dateOfBirth instanceof Date && Number.isNaN(dateOfBirth.getTime())) {
+        return null;
+    }
 
-    // Check if the birthday has not occurred yet this year
-    let monthDiff = today.getMonth() - dob.getMonth();
-    let dayDiff = today.getDate() - dob.getDate();
+    const dateString = (dateOfBirth instanceof Date
+        ? dateOfBirth.toISOString()
+        : String(dateOfBirth)).slice(0, 10);
+    const [birthYear, birthMonth, birthDay] = dateString
+        .split("-")
+        .map(Number);
 
-    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    if (!birthYear || !birthMonth || !birthDay) {
+        return null;
+    }
+
+    const today = new Date();
+
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+
+    let age = currentYear - birthYear;
+
+    const birthdayHasNotOccurred =
+        currentMonth < birthMonth ||
+        (currentMonth === birthMonth && currentDay < birthDay);
+
+    if (birthdayHasNotOccurred) {
         age--;
     }
 
@@ -17,32 +40,28 @@ function calculateAge(dateOfBirth) {
 
 module.exports = calculateAge;
 
-// function calculateAge(dateOfBirth) {
-//     // Create a Date object from the provided date of birth
-//     let dob = new Date(dateOfBirth);
 
-//     // Get today's date
+
+
+// function calculateAge(dateOfBirth) {
+//     let dob = new Date(dateOfBirth);
 //     let today = new Date();
 
-//     // Calculate the difference in milliseconds between today and the date of birth
-//     let diffInMs = today.getTime() - dob.getTime();
+//     let age = today.getFullYear() - dob.getFullYear();
 
-//     // Convert the difference in milliseconds to years
-//     let ageInYears = Math.floor(diffInMs / (1000 * 60 * 60 * 24 * 365));
+//     // Check if the birthday has not occurred yet this year
+//     let monthDiff = today.getMonth() - dob.getMonth();
+//     let dayDiff = today.getDate() - dob.getDate();
 
-//     // Account for leap years (this is not strictly necessary for most cases)
-//     let days = Math.floor((diffInMs % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24));
-//     if (days >= 0 && hasLeapYear(dob.getFullYear() + 1) && !hasLeapYear(today.getFullYear())) {
-//         ageInYears--;
+//     if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+//         age--;
 //     }
 
-//     return ageInYears;
+//     return age;
 // }
 
-// // Helper function to check for leap year
-// function hasLeapYear(year) {
-//     // Return true if the year is a leap year, false otherwise
-//     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-// }
+// module.exports = calculateAge;
+
+
 
 

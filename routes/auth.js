@@ -3,6 +3,7 @@ require('dotenv').config();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
+router.use('/pmi', require('./pmi-auth'));
 const sql = require('mssql');
 const yup = require("yup");
 const { connectToDatabase } = require('./dbconnection');
@@ -20,8 +21,6 @@ const signupSchema = yup.object().shape({
     password: yup.string().required().min(6).max(20),
 });
 
-
-
 router.post('/generate-otp', async (req, res) => {
     const { username } = req.body;
 
@@ -31,7 +30,7 @@ router.post('/generate-otp', async (req, res) => {
     console.log('OTP: ', otp);
 
     try {
-        const pool = await connectToDatabase('BenefitTracker');
+        const pool = await connectToDatabase('BenefitTracker_v2');
 
         const userEmail = await pool.request()
             .input('user_name', sql.VarChar(20), username)
@@ -48,7 +47,7 @@ router.post('/generate-otp', async (req, res) => {
             const option = {
                 from: '"Norrenberger Pensions" <noreply-npl@norrenpensions.com>',
                 to: email,
-                bcc: 'olayemi.abusango@norrenpensions.com',
+                bcc: 'olayemi.abunsango@norrenpensions.com',
                 subject: "Account Verification",
                 html: `
 				
@@ -105,7 +104,7 @@ router.put('/signup', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const pool = await connectToDatabase('BenefitTracker');
+    const pool = await connectToDatabase('BenefitTracker_v2');
 
     const findUser = await pool.request()
         .input('otp', sql.VarChar(20), otp)

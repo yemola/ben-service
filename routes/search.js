@@ -61,6 +61,35 @@ router.get('/agents', async (req, res) => {
     }
 });
 
+router.get('/pmis', async (req, res) => {
+    const { query } = req.query;
+
+    if (typeof query !== 'string' || !query.trim()) {
+        return res.status(400).json({ error: 'Query parameter is required' });
+    }
+
+    if (query.trim().length > 200) {
+        return res.status(400).json({ error: 'Query must not exceed 200 characters' });
+    }
+
+    try {
+        const pool = await connectToDatabase('BenefitTracker_v2');
+        const result = await pool.request()
+            .input('query', sql.NVarChar, `%${query.trim()}%`)
+            .query(`
+                SELECT TOP 5 id, name
+                FROM BenefitTracker_v2.dbo.PMIs
+                WHERE name LIKE @query AND is_active = 1
+                ORDER BY name, id
+            `);
+
+        return res.status(200).json(result.recordset);
+    } catch (error) {
+        console.error('Error fetching PMIs:', error);
+        return res.status(500).json({ error: 'An error occurred while fetching PMIs' });
+    }
+});
+
 router.get('/officer', async (req, res) => {
     const { query } = req.query;
     console.log('officer: ', query);

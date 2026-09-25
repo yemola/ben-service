@@ -15,6 +15,7 @@ const { getAccessToken } = require('../utility/sharepointAuth');
 
 const siteId = process.env.SITE_ID;
 const driveId = process.env.DRIVE_ID;
+const clientUpdateDriveId = process.env.CLIENT_UPDATE_DRIVE_ID;
 const baseUrl = process.env.BASE_URL;
 
 // Configure multer to store uploaded files in memory (or a tmp folder)
@@ -41,7 +42,7 @@ const CLIENT_UPDATES_PARENT = 'Client-Detail-Updates';
  * so this is safe to call on every request.
  */
 async function ensureParentFolder(accessToken) {
-    const url = `${baseUrl}/${driveId}/root/children`;
+    const url = `${baseUrl}/${clientUpdateDriveId}/root/children`;
     try {
         await axios.post(
             url,
@@ -71,7 +72,7 @@ async function ensureParentFolder(accessToken) {
  * won't overwrite — it will create a numbered copy.
  */
 async function createCustomerFolder(accessToken, customerFolderName) {
-    const url = `${baseUrl}/${driveId}/root:/${encodeURIComponent(CLIENT_UPDATES_PARENT)}:/children`;
+    const url = `${baseUrl}/${clientUpdateDriveId}/root:/${encodeURIComponent(CLIENT_UPDATES_PARENT)}:/children`;
     try {
         const response = await axios.post(
             url,
@@ -95,7 +96,7 @@ async function createCustomerFolder(accessToken, customerFolderName) {
  */
 async function uploadClientDocToSharePoint(accessToken, customerFolderName, file) {
     const fileName = encodeURIComponent(file.originalname);
-    const uploadUrl = `${baseUrl}/${driveId}/root:/${encodeURIComponent(CLIENT_UPDATES_PARENT)}/${encodeURIComponent(customerFolderName)}/${fileName}:/content`;
+    const uploadUrl = `${baseUrl}/${clientUpdateDriveId}/root:/${encodeURIComponent(CLIENT_UPDATES_PARENT)}/${encodeURIComponent(customerFolderName)}/${fileName}:/content`;
     const fileBuffer = await fs.promises.readFile(file.path);
 
     const response = await axios.put(uploadUrl, fileBuffer, {
@@ -142,10 +143,6 @@ router.post('/send-otp-to-email', async (req, res) => {
     const { pin } = req.body.params;
     const npin = normalizePin(pin);
 
-    const min = 200000
-    const max = 900000
-    const otp = Math.floor(Math.random() * (max - min) + min)
-
     try {
         const pool = await connectToDatabase('PFA');
         const poolB = await connectToDatabase('BenefitTracker_v2');
@@ -157,9 +154,29 @@ router.post('/send-otp-to-email', async (req, res) => {
                 WHERE PIN = @pin OR MOBILE_PHONE = @pin`);
 
         const clientDetail = clientDetailRes.recordset[0];
-        const rsaPin = clientDetail.PIN;
 
         if (!clientDetail) return res.json({ message: 'Invalid user or incorrect RSA pin.' });
+
+        const rsaPin = clientDetail.PIN;
+
+        const existingApplicationRes = await poolB.request()
+            .input('pin', rsaPin)
+            .query(`
+                SELECT TOP 1 id
+                FROM BenefitTracker_v2.dbo.Applications
+                WHERE applicant_rsa_pin = @pin
+            `);
+
+        if (!existingApplicationRes.recordset || existingApplicationRes.recordset.length === 0) {
+            return res.status(404).json({
+                message: 'You have not submitted a benefit request yet or your request has not been entered into the system.',
+                status: 404,
+            });
+        }
+
+        const min = 200000;
+        const max = 900000;
+        const otp = Math.floor(Math.random() * (max - min) + min);
 
         const findClientRes = await poolB.request()
             .input('pin', rsaPin)
@@ -511,6 +528,7 @@ router.post('/web-send-otp', async (req, res) => {
 router.post('/verify-otp', async (req, res) => {
     const { pin, otp } = req.body.params;
     const npin = normalizePin(pin);
+    const normalizedOtp = String(otp).trim();
 
     const poolB = await connectToDatabase('BenefitTracker_v2');
 
@@ -526,7 +544,7 @@ router.post('/verify-otp', async (req, res) => {
 
     const { savedOtp, rsaPin, otp_createdAt } = savedOtpRes.recordset[0];
 
-    if (otp == savedOtp) {
+    if (normalizedOtp === String(savedOtp).trim()) {
         const otpExpiryMinutes = 10;
         const now = new Date();
         const otpTime = new Date(otp_createdAt);
@@ -552,14 +570,14 @@ router.post('/verify-otp', async (req, res) => {
         const result = await poolB.request()
             .input('pin', rsaPin)
             .query(`
-                SELECT status, status_id, benefit_type, applicant_name, application_date 
+                SELECT TOP 1 status, status_id, benefit_type, applicant_name, application_date 
                     FROM BenefitTracker_v2.dbo.Applications
                     WHERE applicant_rsa_pin = @pin
                     ORDER BY application_date DESC`)
 
-        if (result.rowsAffected[0] > 0) {
+        if (result.recordset && result.recordset.length > 0) {
             const { status, status_id, benefit_type, applicant_name, application_date } = result.recordset[0];
-            res.json({
+            return res.json({
                 data: {
                     statusId: status_id,
                     status,
@@ -567,12 +585,14 @@ router.post('/verify-otp', async (req, res) => {
                     applicantName: applicant_name,
                     appDate: application_date
                 }, message: "Correct OTP submitted.", status: 200
-            })
+            });
         }
 
+        return res.json({ message: "OTP verified successfully. No benefit request was found for this applicant yet.", status: 200 });
+
     } else {
-        console.log('Is OTP correct: ', otp == savedOtp);
-        res.json({ message: "Incorrect OTP" });
+        console.log('Is OTP correct: ', normalizedOtp === String(savedOtp).trim());
+        return res.json({ message: "Incorrect OTP", status: 400 });
     }
 
     console.log('otp: ', savedOtp);
@@ -743,6 +763,44 @@ router.post('/update-client-details', clientUpload.single("employmentProof"), as
 
         console.log('UpdateResult: ', updateRes);
         if (updateRes) {
+            // ---- Log transaction to ClientDetailsUpdates ----
+            try {
+                const poolB = await connectToDatabase('BenefitTracker_v2');
+                await poolB.request()
+                    .input("rsa_pin", rsaPin)
+                    .input("old_phone", oldData.phone)
+                    .input("new_phone", phoneNum)
+                    .input("old_email", oldData.email)
+                    .input("new_email", emailAddr)
+                    .input("old_state", oldData.state)
+                    .input("new_state", stateOfPosting)
+                    .input("old_bvn", oldData.bvn)
+                    .input("new_bvn", bvnNum)
+                    .input("old_nin", oldData.nin)
+                    .input("new_nin", ninNum)
+                    .input("old_employer", oldData.employer)
+                    .input("new_employer", employer)
+                    .input("old_employer_code", oldData.employer_code)
+                    .input("new_employer_code", employer_code)
+                    .input("attachment_name", file ? file.originalname : null)
+                    .input("created_at", new Date())
+                    .query(`
+                        INSERT INTO BenefitTracker_v2.dbo.ClientDetailsUpdates (
+                            rsa_pin, old_phone, new_phone, old_email, new_email,
+                            old_state, new_state, old_bvn, new_bvn, old_nin, new_nin,
+                            old_employer, new_employer, old_employer_code, new_employer_code,
+                            attachment_name, created_at
+                        ) VALUES (
+                            @rsa_pin, @old_phone, @new_phone, @old_email, @new_email,
+                            @old_state, @new_state, @old_bvn, @new_bvn, @old_nin, @new_nin,
+                            @old_employer, @new_employer, @old_employer_code, @new_employer_code,
+                            @attachment_name, @created_at
+                        )
+                    `);
+                console.log("Transaction successfully logged to ClientDetailsUpdates.");
+            } catch (logErr) {
+                console.error("Failed to log transaction to ClientDetailsUpdates (non-fatal):", logErr.message);
+            }
 
             // ---- SharePoint Archiving ----
             let sharePointArchived = false;
@@ -801,10 +859,9 @@ router.post('/update-client-details', clientUpload.single("employmentProof"), as
                     </tbody>
                   </table>
                   <p style="margin-top:15px;">
-                    <b>Attachment:</b> ${
-                        file
-                            ? `Employment Letter / Company ID attached${ sharePointArchived ? ' (archived to SharePoint)' : '' }`
-                            : 'No document attached'
+                    <b>Attachment:</b> ${file
+                        ? `Employment Letter / Company ID attached${sharePointArchived ? ' (archived to SharePoint)' : ''}`
+                        : 'No document attached'
                     }
                   </p>
                 
@@ -882,6 +939,91 @@ router.get('/search-employers', async (req, res) => {
     }
 });
 
+const ExcelJS = require('exceljs');
+
+router.get('/client-updates-report', async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'startDate and endDate are required.' });
+        }
+
+        const pool = await connectToDatabase('BenefitTracker_v2');
+
+        const result = await pool.request()
+            .input('startDate', sql.DateTime, new Date(startDate))
+            .input('endDate', sql.DateTime, new Date(endDate + 'T23:59:59'))
+            .query(`
+                SELECT
+                    id,
+                    rsa_pin,
+                    old_phone, new_phone,
+                    old_email, new_email,
+                    old_state, new_state,
+                    old_bvn, new_bvn,
+                    old_nin, new_nin,
+                    old_employer, new_employer,
+                    old_employer_code, new_employer_code,
+                    attachment_name,
+                    created_at
+                FROM BenefitTracker_v2.dbo.ClientDetailsUpdates
+                WHERE created_at BETWEEN @startDate AND @endDate
+                ORDER BY created_at DESC
+            `);
+
+        const data = result.recordset;
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Client Detail Updates');
+
+        worksheet.columns = [
+            { header: '#', key: 'id', width: 8 },
+            { header: 'RSA PIN', key: 'rsa_pin', width: 20 },
+            { header: 'Old Phone', key: 'old_phone', width: 18 },
+            { header: 'New Phone', key: 'new_phone', width: 18 },
+            { header: 'Old Email', key: 'old_email', width: 30 },
+            { header: 'New Email', key: 'new_email', width: 30 },
+            { header: 'Old State', key: 'old_state', width: 12 },
+            { header: 'New State', key: 'new_state', width: 12 },
+            { header: 'Old BVN', key: 'old_bvn', width: 18 },
+            { header: 'New BVN', key: 'new_bvn', width: 18 },
+            { header: 'Old NIN', key: 'old_nin', width: 18 },
+            { header: 'New NIN', key: 'new_nin', width: 18 },
+            { header: 'Old Employer', key: 'old_employer', width: 30 },
+            { header: 'New Employer', key: 'new_employer', width: 30 },
+            { header: 'Old Employer Code', key: 'old_employer_code', width: 20 },
+            { header: 'New Employer Code', key: 'new_employer_code', width: 20 },
+            { header: 'Attachment', key: 'attachment_name', width: 30 },
+            { header: 'Date Updated', key: 'created_at', width: 25, style: { numFmt: 'yyyy-mm-dd hh:mm:ss' } },
+        ];
+
+        data.forEach(row => worksheet.addRow(row));
+
+        // Style header row
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFF6600' },
+        };
+        worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        res.set({
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="client_updates_${startDate}_to_${endDate}.xlsx"`,
+            'Content-Length': buffer.length,
+        });
+
+        return res.send(buffer);
+    } catch (error) {
+        console.error('Error generating client updates report:', error);
+        return res.status(500).json({ error: 'Failed to generate report.' });
+    }
+});
+
 router.post('/whistleblower', upload.single("attachment"), async (req, res) => {
     try {
         const { name, email, phone, message } = req.body;
@@ -942,6 +1084,34 @@ router.post('/whistleblower', upload.single("attachment"), async (req, res) => {
     }
 });
 
+// router.post('/send-statement', async (req, res) => {
+//     const { pin, dateFrom, dateTo } = req.body;
+
+//     if (!pin || !dateFrom || !dateTo) {
+//         return res.status(400).json({ error: 'PIN, dateFrom, and dateTo are required' });
+//     }
+
+//     const pool = await connectToDatabase('PFA');
+
+//     try {
+//         const headerRes = await pool.request()
+//             .input('pin', pin)
+//             .query(`
+//             SELECT *
+//             FROM PFA.dbo.Cvi_udfMemberStmtHeader(@pin, GETDATE())
+//         `);
+
+//         const headerContent = headerRes.recordset[0];
+
+//         res.json({ headerContent });
+
+//     } catch (error) {
+//         console.error('Error fetching balances: ', error);
+//         res.status(500).json({ message: 'An error occurred while fetching balances' });
+//     }
+
+// })
+
 
 router.post('/adhoc-statement', async (req, res) => {
     const { pin, dateFrom, dateTo } = req.body;
@@ -959,6 +1129,30 @@ router.post('/adhoc-statement', async (req, res) => {
         request.input('DATEFROM', sql.VarChar(30), dateFrom);
         request.input('DATETO', sql.VarChar(30), dateTo);
         await request.execute('proc_adhoc_statement');
+
+        // Gain/Loss on Mandatory
+        const mandGainLossRes = await pool.request()
+            .input('PIN', sql.VarChar(30), pin)
+            .execute("[PFA].[dbo].[sp_GetCurrentValueOfMandatory]")
+
+        const mandGainLoss = mandGainLossRes.recordset?.[0]?.['Gain/Loss'] ?? 0;
+
+        const mandBalance = mandGainLossRes.recordset?.[0]?.['Balance'] ?? 0;
+
+        // Gain/Loss on PPP
+        const pppGainLossRes = await pool.request()
+            .input('PIN', sql.VarChar(30), pin)
+            .execute("[PFA].[dbo].[sp_GetCurrentValueOfPPP]")
+
+        const pppGainLoss = pppGainLossRes.recordset?.[0]?.['Gain/Loss'] ?? 0;
+
+        const pppBalance = pppGainLossRes.recordset?.[0]?.['Balance'] ?? 0;
+
+        // Total Gain/Loss
+        const totalGainLoss = mandGainLoss + pppGainLoss;
+
+        // Total Balance
+        const totalBalance = mandBalance + pppBalance;
 
         // 2. Fetch header
         const headerResult = await pool.request()
@@ -1025,14 +1219,14 @@ router.post('/adhoc-statement', async (req, res) => {
             volNet: formatAmount(dbHeader.VOL_NET),
             preactNsitfNet: formatAmount(dbHeader.PREACTNSITF_NET),
             totalNet: formatAmount(dbHeader.TOTAL_NET),
-            mandGrowth: formatAmount(dbHeader.MAND_GROWTH),
-            volGrowth: formatAmount(dbHeader.VOL_GROWTH),
+            mandGrowth: formatAmount(mandGainLoss),
+            volGrowth: formatAmount(pppGainLoss),
             preactNsitfGrowth: formatAmount(dbHeader.PREACTNSITF_GROWTH),
-            totalGrowth: formatAmount(dbHeader.TOTAL_GROWTH),
-            mandBal: formatAmount(dbHeader.MAND_BAL),
-            volBal: formatAmount(dbHeader.VOL_BAL),
+            totalGrowth: formatAmount(totalGainLoss),
+            mandBal: formatAmount(mandBalance),
+            volBal: formatAmount(pppBalance),
             preactNsitfBal: formatAmount(dbHeader.PREACTNSITF_BAL),
-            totalBal: formatAmount(dbHeader.TOTAL_BAL),
+            totalBal: formatAmount(totalBalance),
             mandUnits: formatUnits(dbHeader.MAND_UNITS),
             volUnits: formatUnits(dbHeader.VOL_UNITS),
             preactNsitfUnits: formatUnits(dbHeader.PREACTNSITF_UNITS),

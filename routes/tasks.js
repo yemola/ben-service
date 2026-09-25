@@ -113,13 +113,53 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-router.post('/application-subm', upload.any(), async (req, res) => {
+const verifyPMISubmitter = async (req, res, next) => {
+    let claims;
+    try {
+        claims = require('jsonwebtoken').verify((req.headers.authorization || '').split(' ')[1], process.env.JWT_SEC, { audience: 'pmi-portal' });
+        if (claims.account_type !== 'pmi') throw new Error('Invalid account type');
+    } catch { return res.status(401).json({ data: 'Please sign in to your PMI account again.' }); }
+    try {
+        const pool = await connectToDatabase('BenefitTracker_v2');
+        const result = await pool.request().input('id', sql.Int, claims.id).query(`
+            SELECT id, name, email, pmi_institution_name AS branch FROM dbo.Users
+            WHERE id = @id AND account_type = 'pmi' AND is_active = 1`);
+        if (!result.recordset[0]?.email) return res.status(403).json({ data: 'Active PMI account required.' });
+        req.pmiSubmitter = result.recordset[0];
+        next();
+    } catch { return res.status(500).json({ data: 'Unable to verify PMI user.' }); }
+};
+const pmiUpload = multer({
+    storage, limits: { fileSize: 3 * 1024 * 1024, files: 20 },
+    fileFilter: (req, file, cb) => file.mimetype === 'application/pdf' ? cb(null, true) : cb(new Error('PDF files required'))
+});
+
+const receivePMIFiles = (req, res, next) => {
+    pmiUpload.any()(req, res, error => {
+        const files = req.files || [];
+        res.on('finish', () => files.forEach(file => fs.unlink(file.path, () => { })));
+        if (error || !files.length || files.reduce((sum, file) => sum + file.size, 0) > 20 * 1024 * 1024) {
+            return res.status(400).json({ data: 'Upload PDFs up to 3MB each and 20MB total.' });
+        }
+        try {
+            const docs = JSON.parse(req.body.requiredDocs);
+            const applicant = JSON.parse(req.body.applicantInfo);
+            if (JSON.parse(req.body.benefitType) !== 'Mortgage' || !Array.isArray(docs) || docs.length !== 3 || files.length !== docs.length ||
+                !docs.every(doc => typeof doc === 'string' && doc.trim()) ||
+                typeof applicant?.firstname !== 'string' || typeof applicant?.surname !== 'string' || typeof applicant?.pin !== 'string' || typeof applicant?.rsaBal !== 'string') throw new Error();
+        } catch { return res.status(400).json({ data: 'Mortgage submissions require applicant details and all 20 PDF documents.' }); }
+        next();
+    });
+};
+
+const submitApplication = async (req, res) => {
     const pool = await connectToDatabase('BenefitTracker_v2');
     const { applicantInfo, agent, benefitType } = req.body;
-    const comment = 'Reviewed & approved';
+    const comment = req.pmiSubmitter ? 'Submitted for CX review' : 'Reviewed & approved';
+    const source = req.pmiSubmitter ? 'PMI' : 'STAFF';
     console.log('Agent Submitting request: ', agent);
 
-    const agentInfo = JSON.parse(agent);
+    const agentInfo = req.pmiSubmitter || JSON.parse(agent);
     const benefitReqType = JSON.parse(benefitType);
     const appInfo = JSON.parse(applicantInfo);
     const requiredDocs = JSON.parse(req.body.requiredDocs);
@@ -141,9 +181,18 @@ router.post('/application-subm', upload.any(), async (req, res) => {
         if (existingApp.rowsAffected[0] > 0) {
             const lastAppl = existingApp.recordset[existingApp.recordset.length - 1];
             if (isWithin6Months(lastAppl.application_date)) {
-                return res.json({ data: "A benefit application of this type was submitted within the last 30 days." });
+                return res.status(409).json({ data: "A benefit application of this type was submitted within the last 30 days." });
             }
         }
+
+        // Fetch statuses and task owner
+        const [firstLevelStatus] = (await pool.request().query(`SELECT id, status_name FROM BenefitTracker_v2.dbo.Statuses WHERE id = ${req.pmiSubmitter ? 0 : 2}`)).recordset;
+        const [secondLevelStatus] = req.pmiSubmitter ? [{ taskOwner_group_id: 12 }] : (await pool.request().query(`SELECT id, taskOwner_group_id FROM BenefitTracker_v2.dbo.Statuses WHERE id = 4`)).recordset;
+        const [taskOwner] = (await pool.request()
+            .input('id', secondLevelStatus.taskOwner_group_id)
+            .query(`SELECT group_name AS name, email FROM BenefitTracker_v2.dbo.UserGroups WHERE id = @id`)).recordset;
+
+        if (!firstLevelStatus || !taskOwner?.email) throw new Error('Submission status or recipient is not configured.');
 
         const accessToken = await getAccessToken();
         const folder = await createSharePointFolder(accessToken, `${baseUrl}/${driveId}/root:`, folderName);
@@ -193,13 +242,6 @@ router.post('/application-subm', upload.any(), async (req, res) => {
     `);
         }
 
-        // Fetch statuses and task owner
-        const [firstLevelStatus] = (await pool.request().query(`SELECT id, status_name FROM BenefitTracker_v2.dbo.Statuses WHERE id = 2`)).recordset;
-        const [secondLevelStatus] = (await pool.request().query(`SELECT id, taskOwner_group_id FROM BenefitTracker_v2.dbo.Statuses WHERE id = 4`)).recordset;
-        const [taskOwner] = (await pool.request()
-            .input('id', secondLevelStatus.taskOwner_group_id)
-            .query(`SELECT group_name AS name, email FROM BenefitTracker_v2.dbo.UserGroups WHERE id = @id`)).recordset;
-
         const today = new Date();
         const applicantName = appInfo.othername
             ? `${appInfo.firstname} ${appInfo.surname} ${appInfo.othername}`
@@ -231,15 +273,16 @@ router.post('/application-subm', upload.any(), async (req, res) => {
             .input('folderId', folderId)
             .input('comment', comment)
             .input('folderName', folderName)
+            .input('submissionSource', source)
             .query(`
           INSERT INTO BenefitTracker_v2.dbo.Applications
           (applicant_name, applicant_rsa_pin, applicant_dob, applicant_rsa_bal, applicant_phone, 
            application_date, benefit_type, employer, fund_type, status_id, status, taskOwner, taskOwner_id,
-           last_reviewer, last_reviewer_id, last_updated, folder_path, surname, firstname, othername, gender, comment, folder_id, folder_name)
+           last_reviewer, last_reviewer_id, last_updated, folder_path, surname, firstname, othername, gender, comment, folder_id, folder_name, submission_source)
           OUTPUT INSERTED.id
           VALUES (@applicantName, @rsaPin, @dob, @rsaBal, @phoneNumber, @applDate, @benefitType,
                   @employer, @fundType, @statusId, @status, @taskOwner, @taskOwnerId,
-                  @lastReviewer, @lastReviewerId, @lastUpdated, @folderPath, @surname, @firstname, @othername, @gender, @comment, @folderId, @folderName)
+                  @lastReviewer, @lastReviewerId, @lastUpdated, @folderPath, @surname, @firstname, @othername, @gender, @comment, @folderId, @folderName, @submissionSource)
         `);
 
         const newAppId = result.recordset[0].id;
@@ -305,26 +348,27 @@ router.post('/application-subm', upload.any(), async (req, res) => {
                 `
         }
 
-        transporter.sendMail(option, async function (err, info) {
-            if (err) {
-                console.log('EmailError: ', err);
-                return;
-            } else {
-                if (info.response) {
-                    console.log('Email Delivered successfully');
-                }
-            }
-        });
-
-        res.status(200).json({ data: "Application submitted successfully." });
+        let notificationSent = false;
+        try { await transporter.sendMail(option); notificationSent = true; }
+        catch (error) { console.error('Application notification failed'); }
+        res.status(200).json({ data: 'Application submitted successfully.', notificationSent });
 
     } catch (err) {
         console.error("Error handling submission:", err);
         res.status(500).json({ data: "An error occurred during application submission." });
     }
-});
+};
 
 
+
+const handleSubmission = (req, res, next) => {
+    Promise.resolve(submitApplication(req, res)).catch(error => {
+        if (res.headersSent) return next(error);
+        res.status(400).json({ data: 'Unable to process submission. Check the application details.' });
+    });
+};
+router.post('/application-subm', upload.any(), handleSubmission);
+router.post('/pmi-application-subm', verifyPMISubmitter, receivePMIFiles, handleSubmission);
 
 // ROUTE FOR FETCHING ASSIGNED TASK - BENEFIT REQUESTS
 router.get('/assigned-applications', async (req, res) => {
@@ -392,6 +436,661 @@ router.get('/assigned-applications', async (req, res) => {
 
 });
 
+// ROUTE FOR FETCHING PMI TASKS (STATUS_ID = 1 AND TASKOWNER_ID = USER_ID)
+router.get('/pmi-tasks', async (req, res) => {
+    const { pmiUserId, pmiInstitutionId } = req.query;
+
+    let id = pmiUserId;
+
+    if (!id && req.headers.authorization) {
+        try {
+            const token = (req.headers.authorization || '').split(' ')[1];
+            const claims = require('jsonwebtoken').verify(token, process.env.JWT_SEC, { audience: 'pmi-portal' });
+            id = claims.id || claims.sub;
+        } catch (e) {
+            // Token verification failed or not a pmi-portal token
+        }
+    }
+
+    if (id !== undefined && id !== null) {
+        try {
+            id = typeof id === 'string' ? JSON.parse(id) : id;
+        } catch {
+            id = Number(id);
+        }
+    }
+
+    if (!id || isNaN(id)) {
+        return res.json([]);
+    }
+
+    try {
+        const pool = await connectToDatabase('BenefitTracker_v2');
+
+        const assignedReqRes = await pool.request()
+            .input('id', sql.Int, id)
+            .query(`
+                SELECT * FROM BenefitTracker_v2.dbo.Applications
+                    WHERE status_id = 1 AND taskOwner_id = @id
+                    ORDER BY benefit_type, application_date DESC`);
+
+        if (assignedReqRes.rowsAffected > 0 || (assignedReqRes.recordset && assignedReqRes.recordset.length > 0)) {
+            const assignedAppls = assignedReqRes.recordset;
+
+            const data = [];
+
+            for (const app of assignedAppls) {
+                let age = calculateAge(app.applicant_dob);
+                let employerName = capitalizeWords(app.employer);
+                let applName = capitalizeWords(app.applicant_name);
+
+                const appl = {
+                    id: app.id,
+                    applicantName: applName,
+                    applicantRsaPin: app.applicant_rsa_pin,
+                    applicantRsaBal: app.applicant_rsa_bal,
+                    applicationDate: app.application_date,
+                    benefitType: app.benefit_type,
+                    docId: app.doc_id,
+                    folderId: app.folder_id,
+                    employer: employerName,
+                    age,
+                    approvedBy: app.last_reviewer,
+                    phone: app.applicant_phone,
+                    statusId: app.status_id,
+                    status: app.status,
+                    taskOwner: app.taskOwner,
+                    taskOwnerId: app.taskOwner_group_id,
+                    docPath: app.doc_path,
+                    folderPath: app.folder_path,
+                    gender: app.gender,
+                    fundType: app.fund_type,
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
+                };
+
+                data.push(appl);
+            }
+
+            res.json(data);
+
+        } else {
+            console.log('No request assigned to you for now.');
+            res.json([]);
+        }
+
+    } catch (error) {
+        console.log('Internal server error.', error);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
+
+});
+
+
+async function handleAdditionalFileUploads(pool, files, folderId, appInfo) {
+    if (!files || !folderId || files.length === 0) return;
+
+    const folderNameRes = await pool.request()
+        .input('folderId', folderId)
+        .query(`
+            SELECT folder_name, applicant_rsa_pin, folder_path FROM BenefitTracker_v2.dbo.Applications
+                WHERE folder_id = @folderId`);
+    const folderName = folderNameRes.recordset?.[0]?.folder_name;
+    const rsaPin = folderNameRes.recordset?.[0]?.applicant_rsa_pin;
+    const webUrl = folderNameRes.recordset?.[0]?.folder_path;
+
+    const folderUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drives/${driveId}/root:/${folderName}`;
+
+    if (!folderName) {
+        throw new Error(`Folder name not found for folderId: ${folderId}`);
+    }
+
+    const accessToken = await getAccessToken();
+
+    const documents = files.map(file => {
+        const filePath = file.path;
+        const buffer = fs.readFileSync(filePath);
+        return {
+            buffer,
+            mimetype: file.mimetype,
+            originalname: file.originalname,
+            path: filePath
+        };
+    });
+
+    const applicantNameStr = appInfo.applicantName || `${appInfo.firstname || ''}-${appInfo.surname || ''}`;
+    const clientName = applicantNameStr.replace(/ /g, '-');
+
+    const compressedFilesPaths = await compressAddedDocs(documents, clientName);
+
+    const uploadPromises = compressedFilesPaths.map(async (compFile) => {
+        let filePath = compFile.compressedPath;
+        const absolutePath = path.resolve(filePath);
+
+        if (!fs.existsSync(absolutePath)) {
+            console.error(`File not found: ${absolutePath}`);
+            throw new Error(`File not found: ${absolutePath}`);
+        }
+
+        try {
+            return uploadFileToSharePoint(accessToken, folderUrl, absolutePath)
+                .then(data => ({
+                    url: data.webUrl,
+                    id: data.id,
+                    size: data.size,
+                    name: data.name
+                }));
+        } catch (error) {
+            console.error(`Error processing file: ${absolutePath}`, error);
+            throw error;
+        }
+    });
+
+    // Cleanup: Delete original files after read
+    documents.forEach(doc => {
+        fs.unlink(doc.path, (err) => {
+            if (err) console.error(`Error deleting original file: ${doc.path}`, err);
+        });
+    });
+
+    const uploadedFiles = await Promise.all(uploadPromises);
+
+    try {
+        for (const file of uploadedFiles) {
+            const fileSize = file.id / 1024;
+            await pool.request()
+                .input('rsaPin', sql.VarChar(50), rsaPin)
+                .input('fileName', sql.VarChar(255), file.name)
+                .input('folderName', sql.VarChar(255), folderName)
+                .input('fileId', sql.VarChar(100), file.id)
+                .input('fileSize', sql.Int, fileSize)
+                .input('folderUrl', sql.VarChar(255), webUrl)
+                .input('folderId', sql.VarChar(100), folderId)
+                .query(`
+                    INSERT INTO BenefitTracker_v2.dbo.DocumentMetaData (rsaPin, fileName, folderName, fileId, fileSize, folderUrl, folderId)
+                    VALUES (@rsaPin, @fileName, @folderName, @fileId, @fileSize, @folderUrl, @folderId);
+                `);
+        }
+        console.log('Document metadata inserted successfully');
+    } catch (err) {
+        console.error('Error inserting document records:', err);
+    }
+
+    compressedFilesPaths.forEach(doc => {
+        fs.unlink(doc.compressedPath, (err) => {
+            if (err) console.error(`Error deleting compressed file: ${doc.compressedPath}`, err);
+        });
+    });
+}
+
+// DEDICATED ENDPOINT: PMI USER RESUBMISSION / APPROVAL (STATUS 1 -> STATUS 0)
+router.put('/pmi-approval', upload.any(), async (req, res) => {
+    const { appInform, comment, docID, folderID, userInfo } = req.body;
+
+    const appInfo = typeof appInform === 'string' ? JSON.parse(appInform) : appInform;
+    const newComment = typeof comment === 'string' ? JSON.parse(comment) : (comment || '');
+    const userDetails = typeof userInfo === 'string' ? JSON.parse(userInfo) : (userInfo || req.pmiSubmitter || {});
+    const folderId = typeof folderID === 'string' ? JSON.parse(folderID) : folderID;
+    const applicationId = appInfo?.id;
+    const userName = userDetails?.name || 'PMI Submitter';
+    const userId = userDetails?.id || userDetails?.user_id;
+    const userEmail = userDetails?.email || '';
+    const userBranch = userDetails?.branch || userDetails?.pmi_institution_name || 'PMI';
+
+    const pool = await connectToDatabase('BenefitTracker_v2');
+
+    try {
+        if (req.files && req.files.length > 0 && folderId) {
+            await handleAdditionalFileUploads(pool, req.files, folderId, appInfo);
+        }
+
+        const today = new Date();
+
+        // 1. Fetch CX UserGroup info (Group 12)
+        const cxGroupRes = await pool.request()
+            .input('groupId', 12)
+            .query(`SELECT id, group_name AS name, email FROM BenefitTracker_v2.dbo.UserGroups WHERE id = @groupId`);
+        const cxGroup = cxGroupRes.recordset?.[0] || { id: 12, name: 'Customer Experience', email: 'cx@norrenpensions.com' };
+
+        const nextStatusId = 0;
+        const nextStatusName = 'Submitted for CX review';
+
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const lockRes = await new sql.Request(transaction)
+                .input('appId', applicationId)
+                .query(`SELECT status_id FROM BenefitTracker_v2.dbo.Applications WITH (UPDLOCK, ROWLOCK) WHERE id = @appId`);
+
+            if (lockRes.recordset.length === 0) {
+                throw new Error('Application not found');
+            }
+
+            const lockedStatusId = lockRes.recordset[0].status_id;
+            if (lockedStatusId !== 1) {
+                throw new Error('Application status is not awaiting PMI resubmission.');
+            }
+
+            const updateRes = await new sql.Request(transaction)
+                .input('appId', applicationId)
+                .input('comment', newComment)
+                .input('statusId', nextStatusId)
+                .input('status', nextStatusName)
+                .input('newTaskOwner', cxGroup.name)
+                .input('newTaskOwnerId', cxGroup.id)
+                .input('lastReviewer', userName)
+                .input('lastReviewerId', userId)
+                .query(`
+                    UPDATE BenefitTracker_v2.dbo.Applications
+                    SET
+                        status_id = @statusId,
+                        status = @status,
+                        taskOwner = @newTaskOwner,
+                        taskOwner_id = @newTaskOwnerId,
+                        last_reviewer = @lastReviewer,
+                        last_reviewer_id = @lastReviewerId,
+                        comment = @comment,
+                        last_updated = GETDATE()
+                    OUTPUT inserted.*
+                    WHERE id = @appId AND status_id = 1
+                `);
+
+            if (updateRes.rowsAffected[0] === 0) {
+                throw new Error('Application already processed');
+            }
+
+            await transaction.commit();
+
+            const approvedAppl = updateRes.recordset[0];
+
+            await pool.request()
+                .input('applId', approvedAppl.id)
+                .input('applName', approvedAppl.applicant_name)
+                .input('applRsaPin', approvedAppl.applicant_rsa_pin)
+                .input('action', 'Resubmitted for CX review')
+                .input('prevReviewerId', userId)
+                .input('prevReviewer', userName)
+                .input('currentReviewer', cxGroup.name)
+                .input('currentReviewerId', cxGroup.id)
+                .input('statusId', nextStatusId)
+                .input('status', nextStatusName)
+                .input('comment', newComment)
+                .input('timestamp', today)
+                .input('docPath', approvedAppl.doc_path)
+                .input('fundType', approvedAppl.fund_type)
+                .input('benefitType', approvedAppl.benefit_type)
+                .input('taskOwnerId', cxGroup.id)
+                .input('taskOwner', cxGroup.name)
+                .input('createdAt', today)
+                .query(`
+                    INSERT INTO BenefitTracker_v2.dbo.ApplicationLog
+                    (appl_id, applicant_name, applicant_rsa_pin, action, prev_reviewer_id, prev_reviewer, 
+                        current_reviewer_id, current_reviewer, status_id, status, comment, timestamp, doc_path, 
+                        fund_type, benefit_type, taskOwner_id, taskOwner, created_at)
+                    VALUES (@applId, @applName, @applRsaPin, @action, @prevReviewerId, @prevReviewer, 
+                        @currentReviewerId, @currentReviewer, @statusId, @status, @comment, @timestamp,
+                        @docPath, @fundType, @benefitType, @taskOwnerId, @taskOwner, @createdAt)
+                `);
+
+            res.status(200).json({ data: 'Resubmitted for CX review.' });
+
+            // Send notification email to CX Team
+            const emailOption = {
+                from: '"Norrenberger Pensions" <noreply-npl@norrenpensions.com>',
+                to: cxGroup.email,
+                cc: userEmail ? `${userEmail}` : undefined,
+                subject: `Resubmitted Task - ${approvedAppl.benefit_type} Request (${userBranch})`,
+                html: `
+                    <p>Dear Customer Experience Team,</p>
+                    <p>A benefit application previously returned to PMI has been updated and resubmitted for review.</p>
+                    <p>
+                        <strong>Applicant:</strong> ${approvedAppl.applicant_name}<br>
+                        <strong>RSA PIN:</strong> ${approvedAppl.applicant_rsa_pin}<br>
+                        <strong>Benefit Type:</strong> ${approvedAppl.benefit_type}<br>
+                        <strong>Resubmitted by:</strong> ${userName} (${userBranch})<br>
+                        <strong>Comments:</strong> "${newComment}"
+                    </p>
+                    <p>Please access the CX Pool in the Benefit Tracker application to review.</p>
+                    <p>Norrenberger Pensions Ltd</p>
+                `
+            };
+
+            transporter.sendMail(emailOption, (err, info) => {
+                if (err) console.error('CX email error:', err);
+                else console.log('CX notification email sent successfully');
+            });
+
+        } catch (txErr) {
+            await transaction.rollback();
+            throw txErr;
+        }
+
+    } catch (err) {
+        console.error('PMI approval error:', err);
+        res.status(400).json({ data: err.message || 'Unable to process resubmission.' });
+    }
+});
+
+// DEDICATED ENDPOINT: CX TEAM APPROVAL (STATUS 0 -> STATUS 2)
+router.put('/cx-approval', upload.any(), async (req, res) => {
+    const { appInform, comment, docID, folderID, userInfo, nextRevId } = req.body;
+
+    const appInfo = typeof appInform === 'string' ? JSON.parse(appInform) : appInform;
+    const newComment = typeof comment === 'string' ? JSON.parse(comment) : (comment || '');
+    const userDetails = typeof userInfo === 'string' ? JSON.parse(userInfo) : (userInfo || {});
+    const folderId = typeof folderID === 'string' ? JSON.parse(folderID) : folderID;
+    const applicationId = appInfo?.id;
+    const nextReviewerId = (!nextRevId || nextRevId === "undefined") ? "" : (typeof nextRevId === 'string' ? JSON.parse(nextRevId) : nextRevId);
+    const { name: userName, id: userId, branch: userBranch, email: userEmail } = userDetails;
+
+    const pool = await connectToDatabase('BenefitTracker_v2');
+
+    try {
+        if (req.files && req.files.length > 0 && folderId) {
+            await handleAdditionalFileUploads(pool, req.files, folderId, appInfo);
+        }
+
+        const today = new Date();
+
+        const nextStatusId = 2;
+        const nextStatusName = 'Reviewed & approved';
+
+        // Fetch Next Handler (Benefit Officer / Group)
+        const nextTaskOwnerRowRes = await pool.request()
+            .input('newStatusId', 4)
+            .query(`SELECT id, status_name, taskOwner_group_id FROM BenefitTracker_v2.dbo.Statuses WHERE id = @newStatusId`);
+        const nextHandlerId = nextReviewerId || nextTaskOwnerRowRes.recordset?.[0]?.taskOwner_group_id;
+
+        const nextHandlerDetailRes = await pool.request()
+            .input('id', nextHandlerId)
+            .query(`SELECT id, group_name AS name, email FROM BenefitTracker_v2.dbo.UserGroups WHERE id = @id`);
+        const nextHandlerDetail = nextHandlerDetailRes.recordset?.[0] || { name: 'Benefit Team', email: 'benefit@norrenpensions.com' };
+
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const lockRes = await new sql.Request(transaction)
+                .input('appId', applicationId)
+                .query(`SELECT status_id FROM BenefitTracker_v2.dbo.Applications WITH (UPDLOCK, ROWLOCK) WHERE id = @appId`);
+
+            if (lockRes.recordset.length === 0) {
+                throw new Error('Application not found');
+            }
+
+            const lockedStatusId = lockRes.recordset[0].status_id;
+            if (lockedStatusId !== 0) {
+                throw new Error('Application status has changed. Please refresh and try again.');
+            }
+
+            const updateRes = await new sql.Request(transaction)
+                .input('appId', applicationId)
+                .input('comment', newComment)
+                .input('statusId', nextStatusId)
+                .input('status', nextStatusName)
+                .input('newTaskOwner', nextHandlerDetail.name)
+                .input('newTaskOwnerId', nextHandlerId)
+                .input('lastReviewer', userName)
+                .input('lastReviewerId', userId)
+                .query(`
+                    UPDATE BenefitTracker_v2.dbo.Applications
+                    SET
+                        status_id = @statusId,
+                        status = @status,
+                        taskOwner = @newTaskOwner,
+                        taskOwner_id = @newTaskOwnerId,
+                        last_reviewer = @lastReviewer,
+                        last_reviewer_id = @lastReviewerId,
+                        comment = @comment,
+                        last_updated = GETDATE()
+                    OUTPUT inserted.*
+                    WHERE id = @appId AND status_id = 0
+                `);
+
+            if (updateRes.rowsAffected[0] === 0) {
+                throw new Error('Application already processed');
+            }
+
+            await transaction.commit();
+
+            const approvedAppl = updateRes.recordset[0];
+
+            await pool.request()
+                .input('applId', approvedAppl.id)
+                .input('applName', approvedAppl.applicant_name)
+                .input('applRsaPin', approvedAppl.applicant_rsa_pin)
+                .input('action', 'Approved')
+                .input('prevReviewerId', userId)
+                .input('prevReviewer', userName)
+                .input('currentReviewer', nextHandlerDetail.name)
+                .input('currentReviewerId', nextHandlerId)
+                .input('statusId', nextStatusId)
+                .input('status', nextStatusName)
+                .input('comment', newComment)
+                .input('timestamp', today)
+                .input('docPath', approvedAppl.doc_path)
+                .input('fundType', approvedAppl.fund_type)
+                .input('benefitType', approvedAppl.benefit_type)
+                .input('taskOwnerId', nextHandlerId)
+                .input('taskOwner', nextHandlerDetail.name)
+                .input('createdAt', today)
+                .query(`
+                    INSERT INTO BenefitTracker_v2.dbo.ApplicationLog
+                    (appl_id, applicant_name, applicant_rsa_pin, action, prev_reviewer_id, prev_reviewer, 
+                        current_reviewer_id, current_reviewer, status_id, status, comment, timestamp, doc_path, 
+                        fund_type, benefit_type, taskOwner_id, taskOwner, created_at)
+                    VALUES (@applId, @applName, @applRsaPin, @action, @prevReviewerId, @prevReviewer, 
+                        @currentReviewerId, @currentReviewer, @statusId, @status, @comment, @timestamp,
+                        @docPath, @fundType, @benefitType, @taskOwnerId, @taskOwner, @createdAt)
+                `);
+
+            res.status(200).json({ data: 'Approved and sent to Benefit Team.' });
+
+            // Send notification email to Benefit Team
+            const option = {
+                from: '"Norrenberger Pensions" <noreply-npl@norrenpensions.com>',
+                to: nextHandlerDetail.email,
+                cc: `${userEmail}`,
+                subject: `Assigned Task - ${approvedAppl.benefit_type} Request (Reviewed by CX)`,
+                html: `
+                    <p>Dear Team,</p>
+                    <p>A new benefit request submitted by PMI has been verified & approved by Customer Experience and assigned to you for further processing.</p>
+                    <p>
+                        <strong>Applicant:</strong> ${approvedAppl.applicant_name}<br>
+                        <strong>RSA PIN:</strong> ${approvedAppl.applicant_rsa_pin}<br>
+                        <strong>Benefit Type:</strong> ${approvedAppl.benefit_type}<br>
+                        <strong>CX Reviewer:</strong> ${userName} (${userBranch})<br>
+                        <strong>Comment:</strong> "${newComment}"
+                    </p>
+                    <p>Benefit Department<br>Norrenberger Pensions Ltd</p>
+                `
+            };
+
+            transporter.sendMail(option, (err, info) => {
+                if (err) console.error('Benefit team email error:', err);
+                else console.log('Email delivered to Benefit Team successfully');
+            });
+
+        } catch (txErr) {
+            await transaction.rollback();
+            throw txErr;
+        }
+
+    } catch (err) {
+        console.error('CX approval error:', err);
+        res.status(400).json({ data: err.message || 'Unable to process approval.' });
+    }
+});
+
+// DEDICATED ENDPOINT: CX TEAM RETURN TO PMI USER (STATUS 0 -> STATUS 1)
+router.put('/cx-return', async (req, res) => {
+    const { appId, comment, userInfo } = req.body.params || req.body;
+
+    const today = new Date();
+    const pool = await connectToDatabase('BenefitTracker_v2');
+
+    const user = typeof userInfo === 'string' ? JSON.parse(userInfo) : (userInfo || {});
+    const parsedAppId = Number(appId);
+
+    try {
+        const appInfoRes = await pool.request()
+            .input('id', sql.Int, parsedAppId)
+            .query(`SELECT id, status_id, last_reviewer, last_reviewer_id, benefit_type, applicant_name, applicant_rsa_pin, doc_path, fund_type FROM BenefitTracker_v2.dbo.Applications WHERE id = @id`);
+
+        const dbAppInfo = appInfoRes.recordset?.[0];
+        if (!dbAppInfo) return res.status(404).json({ data: 'Application not found.' });
+
+        const currentStatusId = dbAppInfo.status_id;
+
+        // Look up the initial PMI submitter from ApplicationLog or last_reviewer_id
+        const pmiLogRes = await pool.request()
+            .input('appId', sql.Int, parsedAppId)
+            .query(`
+                SELECT TOP 1 prev_reviewer_id, prev_reviewer
+                FROM BenefitTracker_v2.dbo.ApplicationLog
+                WHERE appl_id = @appId AND (status_id = 0 OR status_id = 1)
+                ORDER BY log_id ASC
+            `);
+        const pmiSubmitterRow = pmiLogRes.recordset?.[0];
+        const pmiUserId = pmiSubmitterRow?.prev_reviewer_id || dbAppInfo.last_reviewer_id;
+
+        let pmiUser = null;
+        if (pmiUserId) {
+            const pmiUserDetailRes = await pool.request()
+                .input('id', sql.Int, pmiUserId)
+                .query(`SELECT id, name, email, pmi_institution_name AS branch FROM BenefitTracker_v2.dbo.Users WHERE id = @id`);
+            pmiUser = pmiUserDetailRes.recordset?.[0];
+        }
+
+        const nextTaskOwnerId = pmiUserId || null;
+        const nextTaskOwnerName = pmiUser?.name || dbAppInfo.last_reviewer || 'PMI Submitter';
+        const nextTaskOwnerEmail = pmiUser?.email || '';
+
+        const nextStatusId = 1;
+        const nextStatusName = 'Returned to Initiator';
+
+        let transactionCommitted = false;
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const lockRes = await new sql.Request(transaction)
+                .input('appId', sql.Int, parsedAppId)
+                .query(`SELECT status_id FROM BenefitTracker_v2.dbo.Applications WITH (UPDLOCK, ROWLOCK) WHERE id = @appId`);
+
+            if (lockRes.recordset.length === 0) {
+                throw new Error('Application not found.');
+            }
+
+            const returnRes = await new sql.Request(transaction)
+                .input('appId', sql.Int, parsedAppId)
+                .input('comment', sql.NVarChar, comment || '')
+                .input('nextStatusId', sql.Int, nextStatusId)
+                .input('nextStatus', sql.NVarChar, nextStatusName)
+                .input('nextTaskOwner', sql.NVarChar, nextTaskOwnerName)
+                .input('nextTaskOwnerId', sql.Int, nextTaskOwnerId)
+                .input('lastReviewer', sql.NVarChar, user.name || 'Customer Experience')
+                .input('lastReviewerId', sql.Int, user.id ? Number(user.id) : null)
+                .query(`
+                    UPDATE BenefitTracker_v2.dbo.Applications
+                    SET
+                        status_id = @nextStatusId,
+                        status = @nextStatus,
+                        taskOwner = @nextTaskOwner,
+                        taskOwner_id = @nextTaskOwnerId,
+                        last_reviewer = @lastReviewer,
+                        last_reviewer_id = @lastReviewerId,
+                        comment = @comment,
+                        last_updated = GETDATE()
+                    OUTPUT inserted.*
+                    WHERE id = @appId
+                `);
+
+            if (!returnRes.recordset || returnRes.recordset.length === 0 || returnRes.rowsAffected[0] === 0) {
+                throw new Error('Application could not be updated. It may have already been processed.');
+            }
+
+            await transaction.commit();
+            transactionCommitted = true;
+
+            const returnedAppl = returnRes.recordset[0];
+
+            await pool.request()
+                .input('applId', sql.Int, returnedAppl.id)
+                .input('applName', sql.NVarChar, returnedAppl.applicant_name)
+                .input('applRsaPin', sql.VarChar(50), returnedAppl.applicant_rsa_pin)
+                .input('action', sql.NVarChar, 'Returned')
+                .input('prevReviewerId', sql.Int, user.id ? Number(user.id) : null)
+                .input('prevReviewer', sql.NVarChar, user.name || 'Customer Experience')
+                .input('currentReviewer', sql.NVarChar, nextTaskOwnerName)
+                .input('currentReviewerId', sql.Int, nextTaskOwnerId)
+                .input('statusId', sql.Int, nextStatusId)
+                .input('status', sql.NVarChar, nextStatusName)
+                .input('comment', sql.NVarChar, comment || '')
+                .input('timestamp', today)
+                .input('docPath', sql.NVarChar, returnedAppl.doc_path || '')
+                .input('fundType', sql.NVarChar, returnedAppl.fund_type || '')
+                .input('benefitType', sql.NVarChar, returnedAppl.benefit_type || '')
+                .input('taskOwnerId', sql.Int, nextTaskOwnerId)
+                .input('taskOwner', sql.NVarChar, nextTaskOwnerName)
+                .input('createdAt', today)
+                .query(`
+                    INSERT INTO BenefitTracker_v2.dbo.ApplicationLog
+                    (appl_id, applicant_name, applicant_rsa_pin, action, prev_reviewer_id, prev_reviewer, 
+                        current_reviewer_id, current_reviewer, status_id, status, comment, timestamp, doc_path, 
+                        fund_type, benefit_type, taskOwner_id, taskOwner, created_at)
+                    VALUES (@applId, @applName, @applRsaPin, @action, @prevReviewerId, @prevReviewer, 
+                        @currentReviewerId, @currentReviewer, @statusId, @status, @comment, @timestamp,
+                        @docPath, @fundType, @benefitType, @taskOwnerId, @taskOwner, @createdAt)
+                `);
+
+            res.status(200).json({ data: 'Returned to PMI submitter.' });
+
+            if (nextTaskOwnerEmail) {
+                const option = {
+                    from: '"Norrenberger Pensions" <noreply-npl@norrenpensions.com>',
+                    to: nextTaskOwnerEmail,
+                    cc: user.email ? `${user.email}, cx@norrenpensions.com` : 'cx@norrenpensions.com',
+                    subject: `Returned Application - ${returnedAppl.benefit_type} Request`,
+                    html: `
+                        <p>Dear ${nextTaskOwnerName},</p>
+                        <p>A benefit application submitted by your institution has been reviewed by Customer Experience and returned for the following reason:</p>
+                        <p style="background-color: #f8f9fa; padding: 12px; border-left: 4px solid #f0ad4e;">"${comment}"</p>
+                        <p>Please sign in to the PMI Portal, review the comments, upload any requested documents, and resubmit.</p>
+                        <p>
+                            <strong>Applicant:</strong> ${returnedAppl.applicant_name}<br>
+                            <strong>RSA PIN:</strong> ${returnedAppl.applicant_rsa_pin}<br>
+                            <strong>Benefit Type:</strong> ${returnedAppl.benefit_type}<br>
+                            <strong>Reviewer:</strong> ${user.name || 'Customer Experience'} (Customer Experience)
+                        </p>
+                        <p>Norrenberger Pensions Ltd</p>
+                    `
+                };
+
+                transporter.sendMail(option, (err, info) => {
+                    if (err) console.log('PMI email error:', err);
+                    else console.log('Email delivered to PMI user successfully');
+                });
+            }
+
+        } catch (txErr) {
+            if (!transactionCommitted) {
+                try {
+                    await transaction.rollback();
+                } catch (rbErr) {
+                    console.error('Rollback failed:', rbErr.message);
+                }
+            }
+            console.error('Transaction error in cx-return:', txErr);
+            throw txErr;
+        }
+
+    } catch (err) {
+        console.error('CX return error:', err);
+        res.status(400).json({ data: err.message || 'Unable to process return.' });
+    }
+});
 
 router.put('/approval', upload.any(), async (req, res) => {
     const { appInform, comment, docID, folderID, userInfo, nextRevId } = req.body;
@@ -420,110 +1119,13 @@ router.put('/approval', upload.any(), async (req, res) => {
     if (appInfo.statusId === 2 && role2Id !== 1005) {
         return res.json({
             data: "The request is already approved and is with the Benefit Team. Refresh your Tasks page."
-      });
+        });
     }
-
 
     const files = req.files;
 
     if (files && folderId && files.length > 0) {
-
-        const folderNameRes = await pool.request()
-            .input('folderId', folderId)
-            .query(`
-                SELECT folder_name, applicant_rsa_pin, folder_path FROM BenefitTracker_v2.dbo.Applications
-                    WHERE folder_id = @folderId`);
-        const folderName = folderNameRes.recordset?.[0]?.folder_name;
-        const rsaPin = folderNameRes.recordset?.[0]?.applicant_rsa_pin;
-        const webUrl = folderNameRes.recordset?.[0]?.folder_path;
-
-        const folderUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drives/${driveId}/root:/${folderName}`
-
-        if (!folderName) {
-            throw new Error(`Folder name not found for folderId: ${folderId}`);
-        }
-
-        const accessToken = await getAccessToken();
-
-        const documents = files.map(file => {
-            const filePath = file.path;
-            const buffer = fs.readFileSync(filePath);
-            return {
-                buffer,
-                mimetype: file.mimetype,
-                originalname: file.originalname,
-                path: filePath
-            }
-        });
-
-        const clientName = appInfo.applicantName.replace(/ /g, '-');
-
-        const compressedFilesPaths = await compressAddedDocs(documents, clientName);
-
-        const uploadPromises = compressedFilesPaths.map(async (compFile) => {
-            let filePath = compFile.compressedPath;
-            const absolutePath = path.resolve(filePath);
-
-            // Check if the file exists
-            if (!fs.existsSync(absolutePath)) {
-                console.error(`File not found: ${absolutePath}`);
-                throw new Error(`File not found: ${absolutePath}`);
-            }
-
-            try {
-                return uploadFileToSharePoint(accessToken, folderUrl, absolutePath)
-                    .then(data => ({
-                        url: data.webUrl,
-                        id: data.id,
-                        size: data.size,
-                        name: data.name
-                    }))
-
-            } catch (error) {
-                console.error(`Error processing file: ${absolutePath}`, error);
-                throw error; // Re-throw the error for further handling
-            }
-        });
-
-        // Cleanup: Delete original files after successful upload
-        documents.forEach(doc => {
-            fs.unlink(doc.path, (err) => {
-                if (err) console.error(`Error deleting original file: ${doc.path}`, err);
-                else console.log(`Deleted original file: ${doc.path}`);
-            });
-        });
-
-        const uploadedFiles = await Promise.all(uploadPromises);
-
-        try {
-            for (const file of uploadedFiles) {
-                const fileSize = file.id / 1024;
-                await pool.request()
-                    .input('rsaPin', sql.VarChar(50), rsaPin)
-                    .input('fileName', sql.VarChar(255), file.name)
-                    .input('folderName', sql.VarChar(255), folderName)
-                    .input('fileId', sql.VarChar(100), file.id)
-                    .input('fileSize', sql.Int, fileSize)
-                    .input('folderUrl', sql.VarChar(255), webUrl)
-                    .input('folderId', sql.VarChar(100), folderId)
-                    .query(`
-                INSERT INTO BenefitTracker_v2.dbo.DocumentMetaData (rsaPin, fileName, folderName, fileId, fileSize, folderUrl, folderId)
-                VALUES (@rsaPin, @fileName, @folderName, @fileId, @fileSize, @folderUrl, @folderId);
-              `);
-            }
-            console.log('Record inserted successfully');
-        } catch (err) {
-            console.error('Error inserting records:', err);
-        }
-
-
-        compressedFilesPaths.forEach(doc => {
-            fs.unlink(doc.compressedPath, (err) => {
-                if (err) console.error(`Error deleting original file: ${doc.compressedPath}`, err);
-                else console.log(`Deleted compressed file: ${doc.compressedPath}`);
-            });
-        });
-
+        await handleAdditionalFileUploads(pool, files, folderId, appInfo);
     }
 
     const today = new Date();
@@ -532,7 +1134,14 @@ router.put('/approval', upload.any(), async (req, res) => {
         const applInfoRes = await pool.request()
             .input('id', applicationId)
             .query(
-                `SELECT id, status, status_id, last_reviewer, applicant_phone, applicant_rsa_pin, benefit_type FROM BenefitTracker_v2.dbo.Applications
+                `SELECT id, 
+                        status,
+                         status_id, 
+                         last_reviewer, 
+                         applicant_phone, 
+                         applicant_rsa_pin, 
+                         benefit_type 
+                 FROM BenefitTracker_v2.dbo.Applications
                     WHERE id = @id`
             )
 
@@ -908,9 +1517,10 @@ router.put('/return-docs', async (req, res) => {
     const clientStatusId = statusId !== undefined ? statusId : dbAppInfo.status_id;
     const currentStatusId = clientStatusId;
 
-    if (currentStatusId === 3) return res.json({ data: 'The request is already with the Initiator.' });
+    // if (currentStatusId === 3) return res.json({ data: 'The request is already with the Initiator.' });
 
     const returnTransitions = {
+        0: 1,
         1: 0,
         2: 3,
         3: 1,
@@ -938,7 +1548,6 @@ router.put('/return-docs', async (req, res) => {
         25: 23,
     };
 
-    //const nextStatusId = returnTransitions.currentStatusId;
     const nextStatusId = returnTransitions[currentStatusId];
     if (!nextStatusId) {
         throw new Error('Return not allowed from this status');
@@ -952,41 +1561,72 @@ router.put('/return-docs', async (req, res) => {
 
     const nextLevelRow = await nextLevelRes.recordset[0];
 
-    const firstAgentDetailRes = await pool.request()
-        .input('appId', appId)
-        .input('benefitType', dbAppInfo.benefit_type)
-        .query(`
-        SELECT log_id, prev_reviewer, prev_reviewer_id, action, applicant_rsa_pin FROM BenefitTracker_v2.dbo.ApplicationLog
-            WHERE status_id = 2 AND appl_id = @appId AND benefit_type = @benefitType
-            `)
+    let nextTaskOwnerEmail = '';
+    let nextTaskOwnerId = null;
+    let nextTaskOwnerName = '';
 
-    const firstAgentDetail = firstAgentDetailRes.recordset[0];
+    if (currentStatusId === 0 || nextStatusId === 1) {
+        // CX returning to PMI Submitter
+        const pmiLogRes = await pool.request()
+            .input('appId', appId)
+            .query(`
+                SELECT TOP 1 prev_reviewer_id, prev_reviewer
+                FROM BenefitTracker_v2.dbo.ApplicationLog
+                WHERE appl_id = @appId AND (status_id = 0 OR status_id = 1)
+                ORDER BY log_id ASC
+            `);
+        const pmiSubmitterRow = pmiLogRes.recordset?.[0];
+        const pmiUserId = pmiSubmitterRow?.prev_reviewer_id || dbAppInfo.last_reviewer_id;
 
-    const firstAgentId = firstAgentDetail.prev_reviewer_id;
+        const pmiUserDetailRes = await pool.request()
+            .input('id', pmiUserId)
+            .query(`
+                SELECT id, email, name, pmi_institution_name AS branch
+                FROM BenefitTracker_v2.dbo.Users
+                WHERE id = @id
+            `);
+        const pmiUser = pmiUserDetailRes.recordset?.[0];
 
-    const nextPersonFrStatusesId = nextLevelRow.next_taskOwner_group_id;
+        nextTaskOwnerId = pmiUserId;
+        nextTaskOwnerName = pmiUser?.name || dbAppInfo.last_reviewer || 'PMI Submitter';
+        nextTaskOwnerEmail = pmiUser?.email || '';
+    } else if (nextStatusId < 4) {
+        const firstAgentDetailRes = await pool.request()
+            .input('appId', appId)
+            .input('benefitType', dbAppInfo.benefit_type)
+            .query(`
+            SELECT log_id, prev_reviewer, prev_reviewer_id, action, applicant_rsa_pin FROM BenefitTracker_v2.dbo.ApplicationLog
+                WHERE status_id = 2 AND appl_id = @appId AND benefit_type = @benefitType
+                `);
 
-    const nextStatusName = nextLevelRow.status_name;
+        const firstAgentDetail = firstAgentDetailRes.recordset?.[0];
+        const firstAgentId = firstAgentDetail?.prev_reviewer_id;
 
-    const nextTaskOwnerDetailRes = await pool.request()
-        .input('id', nextPersonFrStatusesId)
-        .query(`
-            SELECT id, email, group_name AS name FROM BenefitTracker_v2.dbo.UserGroups
-                WHERE id = @id`)
+        if (firstAgentId) {
+            const nextTaskOwnerDetailIfPersonRes = await pool.request()
+                .input('id', firstAgentId)
+                .query(`
+                    SELECT id, email, name FROM BenefitTracker_v2.dbo.Users
+                        WHERE id = @id`);
 
-    const nextHandlerDetailFromStatuses = await nextTaskOwnerDetailRes.recordset[0];
+            const nextTaskOwnerDetailIfPerson = nextTaskOwnerDetailIfPersonRes.recordset?.[0];
+            nextTaskOwnerEmail = nextTaskOwnerDetailIfPerson?.email || '';
+            nextTaskOwnerId = nextTaskOwnerDetailIfPerson?.id;
+            nextTaskOwnerName = nextTaskOwnerDetailIfPerson?.name || '';
+        }
+    } else {
+        const nextPersonFrStatusesId = nextLevelRow.next_taskOwner_group_id;
+        const nextTaskOwnerDetailRes = await pool.request()
+            .input('id', nextPersonFrStatusesId)
+            .query(`
+                SELECT id, email, group_name AS name FROM BenefitTracker_v2.dbo.UserGroups
+                    WHERE id = @id`);
 
-    const nextTaskOwnerDetailIfPersonRes = await pool.request()
-        .input('id', firstAgentId)
-        .query(`
-            SELECT id, email, name FROM BenefitTracker_v2.dbo.Users
-                WHERE id = @id`)
-
-    const nextTaskOwnerDetailIfPerson = nextTaskOwnerDetailIfPersonRes.recordset[0];
-
-    const nextTaskOwnerEmail = nextStatusId < 4 ? nextTaskOwnerDetailIfPerson.email : nextHandlerDetailFromStatuses.email;
-    const nextTaskOwnerId = nextStatusId < 4 ? nextTaskOwnerDetailIfPerson.id : nextHandlerDetailFromStatuses.id;
-    const nextTaskOwnerName = nextStatusId < 4 ? nextTaskOwnerDetailIfPerson.name : nextHandlerDetailFromStatuses.name;
+        const nextHandlerDetailFromStatuses = nextTaskOwnerDetailRes.recordset?.[0];
+        nextTaskOwnerEmail = nextHandlerDetailFromStatuses?.email || '';
+        nextTaskOwnerId = nextHandlerDetailFromStatuses?.id;
+        nextTaskOwnerName = nextHandlerDetailFromStatuses?.name || '';
+    }
     console.log('NEXTREVIEWER: ', nextTaskOwnerEmail, nextTaskOwnerId, nextTaskOwnerName);
 
     try {
@@ -1180,9 +1820,7 @@ router.put('/recall', async (req, res) => {
                 WHERE id = @id
             `)
 
-    const groupEmail = await taskOwnerEmailRes.recordset[0].email
-
-
+    const groupEmail = taskOwnerEmailRes.recordset[0]?.email
 
     const taskOwnerEmailResSearch = await pool.request()
         .input('id', taskOwnerId)

@@ -27,6 +27,81 @@ router.get('/pool-members/:groupId', async (req, res) => {
     }
 })
 
+router.get('/cx-pool', async (req, res) => {
+
+    try {
+        const pool = await connectToDatabase('BenefitTracker_v2');
+
+        // const applsFromPMIRes = await pool.request()
+        //     .query(`
+        //         SELECT appl_id FROM BenefitTracker_v2.dbo.Applications 
+        //     `)
+
+        // const applIdsFromPMI = applsFromPMIRes.recordset?.map(row => row.appl_id) || [];
+
+        // if (!applIdsFromPMI.length) {
+        //     console.log('No request assigned to you for now.');
+        //     return res.json([]);
+        // }
+
+        const assignedReqRes = await pool.request()
+            .query(`
+                SELECT * FROM BenefitTracker_v2.dbo.Applications
+                    WHERE status_id IN (0, 3) AND submission_source = 'PMI'
+                    ORDER BY benefit_type, application_date DESC`);
+
+        if (assignedReqRes.rowsAffected > 0 || (assignedReqRes.recordset && assignedReqRes.recordset.length > 0)) {
+            const assignedAppls = assignedReqRes.recordset;
+
+            const data = [];
+
+            for (const app of assignedAppls) {
+                let age = calculateAge(app.applicant_dob);
+                let employerName = capitalizeWords(app.employer);
+                let applName = capitalizeWords(app.applicant_name);
+
+                const appl = {
+                    id: app.id,
+                    applicantName: applName,
+                    applicantRsaPin: app.applicant_rsa_pin,
+                    applicantRsaBal: app.applicant_rsa_bal,
+                    applicationDate: app.application_date,
+                    benefitType: app.benefit_type,
+                    docId: app.doc_id,
+                    folderId: app.folder_id,
+                    employer: employerName,
+                    age,
+                    approvedBy: app.last_reviewer,
+                    phone: app.applicant_phone,
+                    statusId: app.status_id,
+                    status: app.status,
+                    taskOwner: app.taskOwner,
+                    taskOwnerId: app.taskOwner_group_id,
+                    docPath: app.doc_path,
+                    folderPath: app.folder_path,
+                    gender: app.gender,
+                    fundType: app.fund_type,
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
+                };
+
+                data.push(appl);
+            }
+
+            res.json(data);
+
+        } else {
+            console.log('No request assigned to you for now.');
+            res.json([]);
+        }
+
+    } catch (error) {
+        console.log('Internal server error.', error);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
+
+});
+
 router.get('/benefit-pool', async (req, res) => {
 
     try {
@@ -69,7 +144,8 @@ router.get('/benefit-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -132,7 +208,8 @@ router.get('/processing-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -193,7 +270,8 @@ router.get('/benefit-head-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -254,7 +332,8 @@ router.get('/audit-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -317,7 +396,8 @@ router.get('/audit-processor', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -378,7 +458,8 @@ router.get('/compliance-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -439,7 +520,8 @@ router.get('/finance-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);
@@ -500,7 +582,8 @@ router.get('/archive-pool', async (req, res) => {
                     folderPath: app.folder_path,
                     gender: app.gender,
                     fundType: app.fund_type,
-                    comment: app.comment
+                    comment: app.comment,
+                    lastUpdated: app.last_updated
                 };
 
                 data.push(appl);

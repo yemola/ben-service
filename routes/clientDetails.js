@@ -95,13 +95,13 @@ router.get('/balances', async (req, res) => {
 //     }
 // });
 
-router.get('/:searchTerm', async (req, res) => {
-    const { searchTerm } = req.params;
+router.get('/:pin', async (req, res) => {
+    const { pin } = req.params;
     try {
         const pool = await connectToDatabase('PFA');
         const poolB = await connectToDatabase('BenefitTracker_v2');
 
-        const pinSearchRes = await pool.request().input('pin', searchTerm).query(`
+        const pinSearchRes = await pool.request().input('pin', pin).query(`
         SELECT COUNT(*) AS pinCount FROM PFA.dbo.EMPLOYEES WHERE PIN = @pin
         `);
 
@@ -109,16 +109,29 @@ router.get('/:searchTerm', async (req, res) => {
 
         if (pinCount === 0) return res.status(404).json({ message: 'Incorrect pin' });
 
-        const testres = await poolB.request().input('pin', searchTerm)
+        const testres = await poolB.request().input('pin', pin)
             .execute('BenefitTracker_v2.dbo.GetRecaptureStatus');
 
         const pinStatus = testres.recordset.length > 0 ? testres.recordset[0]['RECAPTURE STATUS'] : 'Unknown';
 
-        const jsonRes = await pool.request().input('pin', searchTerm).query(`SELECT PIN, SURNAME, FIRSTNAME, OTHERNAMES, GENDER, DATE_OF_BIRTH, EMPLOYER_NAME, MOBILE_PHONE, EMAIL, EMPLOYER_RCNO FROM PFA.dbo.EMPLOYEES WHERE PIN = @pin`);
+        const jsonRes = await pool.request().input('pin', pin).query(`
+            SELECT 
+            PIN, 
+            SURNAME, 
+            FIRSTNAME, 
+            OTHERNAMES, 
+            GENDER, 
+            CONVERT(char(10), DATE_OF_BIRTH, 23) AS date_of_birth, 
+            EMPLOYER_NAME, 
+            MOBILE_PHONE, 
+            EMAIL, 
+            EMPLOYER_RCNO 
+        FROM PFA.dbo.EMPLOYEES 
+        WHERE PIN = @pin`);
 
         const employeeInfo = await jsonRes.recordset[0];
 
-        const result = await contSummary(searchTerm);
+        const result = await contSummary(pin);
         // console.log('contSummary: ', result);
 
         const rsaBalStr = result?.TOTAL_BALANCE ? result?.TOTAL_BALANCE.toFixed(2) : "";
@@ -129,7 +142,7 @@ router.get('/:searchTerm', async (req, res) => {
         const surName = await capitalizeWords(employeeInfo.SURNAME);
         const otherName = await employeeInfo.OTHERNAMES ? capitalizeWords(employeeInfo.OTHERNAMES) : '';
 
-        const age = calculateAge(employeeInfo.DATE_OF_BIRTH);
+        const age = calculateAge(employeeInfo.date_of_birth);
 
         const clientDetails = {
             pin: employeeInfo.PIN,
@@ -137,7 +150,7 @@ router.get('/:searchTerm', async (req, res) => {
             firstname: firstName,
             othernames: otherName,
             gender: employeeInfo.GENDER,
-            dateOfBirth: employeeInfo.DATE_OF_BIRTH,
+            dateOfBirth: employeeInfo.date_of_birth,
             age,
             employer: employerName,
             phoneNumber: employeeInfo.MOBILE_PHONE,

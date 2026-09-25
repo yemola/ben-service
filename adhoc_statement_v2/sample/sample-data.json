@@ -1,0 +1,161 @@
+{
+  "logoUrl": "",
+  "bannerUrl": "",
+  "signatureUrl": "",
+  "stampUrl": "",
+  "period": {
+    "printedAt": "8/18/2026 1:42:42 PM",
+    "dateFrom": "18/08/2000",
+    "dateTo": "18/08/2026"
+  },
+  "personalInfo": {
+    "accountName": "ABUNSANGO OLAYEMI OLAOLU",
+    "pin": "PEN110156897384",
+    "employer": "NORRENBERGER PENSIONS LIMITED"
+  },
+  "portfolio": {
+    "totalCpsPpp": "₦1,267,303.49",
+    "combinedGainLoss": "₦319,246.45",
+    "totalFcyFundVii": "$0.00",
+    "fcyGainLoss": "$0.00"
+  },
+  "schemes": {
+    "rsa": {
+      "currentValue": "₦1,267,303.49"
+    },
+    "microPension": {
+      "currentValue": "₦0.00"
+    },
+    "foreignCurrency": {
+      "currentValue": "$0.00"
+    }
+  },
+  "rsaFund": {
+    "totalMandatory": "₦951,057.04",
+    "gainLoss": "₦319,246.45",
+    "adminFee": "₦3,000.00",
+    "currentValue": "₦1,267,303.49",
+    "withdrawal": "₦0.00",
+    "transactions": [
+      {
+        "transDate": "01/02/2024",
+        "period": "Feb 24",
+        "description": "Contribution for Feb 2024",
+        "employee": "9,120.42",
+        "employer": "11,400.52",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "20,420.94"
+      },
+      {
+        "transDate": "01/03/2024",
+        "period": "Mar 24",
+        "description": "Contribution for Mar 2024",
+        "employee": "14,332.08",
+        "employer": "17,915.10",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "32,147.18"
+      },
+      {
+        "transDate": "08/03/2024",
+        "period": "Mar 24",
+        "description": "INTEREST",
+        "employee": "4.48",
+        "employer": "0.00",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "0.00",
+        "total": "4.48"
+      },
+      {
+        "transDate": "01/04/2024",
+        "period": "Apr 24",
+        "description": "Contribution for Apr 2024",
+        "employee": "14,332.08",
+        "employer": "17,915.10",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "32,147.18"
+      },
+      {
+        "transDate": "01/05/2024",
+        "period": "May 24",
+        "description": "Contribution for May 2024",
+        "employee": "14,332.08",
+        "employer": "17,915.10",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "32,147.18"
+      },
+      {
+        "transDate": "09/05/2024",
+        "period": "May 24",
+        "description": "Capitalised Interest from CRA - 09-May-2024",
+        "employee": "31.71",
+        "employer": "0.00",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "0.00",
+        "total": "31.71"
+      },
+      {
+        "transDate": "01/06/2024",
+        "period": "Jun 24",
+        "description": "Contribution for Jun 2024",
+        "employee": "14,332.08",
+        "employer": "17,915.10",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "32,147.18"
+      },
+      {
+        "transDate": "06/06/2024",
+        "period": "Jun 24",
+        "description": "Capitalised Interest from CRA - 06-Jun-2024",
+        "employee": "28.19",
+        "employer": "0.00",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "0.00",
+        "total": "28.19"
+      },
+      {
+        "transDate": "01/07/2024",
+        "period": "Jul 24",
+        "description": "Contribution for Jul 2024",
+        "employee": "17,915.10",
+        "employer": "14,332.08",
+        "otherCont": "0.00",
+        "withdrawal": "0.00",
+        "fees": "100.00",
+        "total": "32,147.18"
+      }
+    ]
+  },
+  "personalPension": {
+    "totalMandatory": "₦0.00",
+    "gainLoss": "₦0.00",
+    "adminFee": "₦0.00",
+    "currentValue": "₦0.00",
+    "withdrawal": "₦0.00",
+    "transactions": []
+  },
+  "dollarFund": {
+    "totalMandatory": "$0.00",
+    "gainLoss": "₦0.00",
+    "adminFee": "$0.00",
+    "currentValue": "$0.00",
+    "withdrawal": "$0.00",
+    "transactions": []
+  },
+  "signatory": {
+    "name": "Bilkisu Ogirima",
+    "title": "Head, Customer Experience"
+  }
+}

@@ -15,6 +15,9 @@ const verifyToken = (req, res, next) => {
 
   try {
     const verified = jwt.verify(token, process.env.JWT_SEC);
+    if (verified.account_type === 'pmi' || verified.purpose === 'pmi-password') {
+      return res.status(403).json({ message: 'This endpoint requires a staff session.' });
+    }
     req.user = verified; // Attach user info to the request
     next(); // Move to the next middleware or route handler
   } catch (error) {

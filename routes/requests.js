@@ -260,6 +260,7 @@ router.get('/appl-logs', async (req, res) => {
                 gender: app.gender,
                 fundType: app.fund_type,
                 comment: app.comment,
+                lastUpdated: app.last_updated
             };
 
             data.push(appl);

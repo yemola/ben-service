@@ -14,7 +14,7 @@ const schema = yup.object().shape({
 router.get('/', async (req, res) => {
 
     try {
-        const pool = await connectToDatabase('BenefitTracker');
+        const pool = await connectToDatabase('BenefitTracker_v2');
 
         const result = await pool.request()
             .query(`SELECT U.id, U.name, U.user_name, U.email, U.branch, R.name AS role 
@@ -83,7 +83,7 @@ router.get('/mp-employers', async (req, res) => {
 router.get('/inactive-users', async (req, res) => {
 
     try {
-        const pool = await connectToDatabase('BenefitTracker');
+        const pool = await connectToDatabase('BenefitTracker_v2');
 
         const result = await pool.request()
             .query(`SELECT U.id, U.name, U.user_name, U.email, U.branch, R.name AS role 
@@ -100,6 +100,110 @@ router.get('/inactive-users', async (req, res) => {
 
 });
 
+router.post('/add-pmi-user', async (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ message: 'A JSON object is required.', errors: { form: 'Invalid request body.' } });
+    }
+    const errors = {};
+    const readName = (field, label) => {
+        const value = body[field];
+        if (typeof value !== 'string' || !value.trim()) {
+            errors[field] = `${label} is required and must be text.`;
+            return '';
+        }
+        const trimmed = value.trim();
+        if (trimmed.length > 253) errors[field] = `${label} is too long.`;
+        if (/[\u0000-\u001f\u007f]/.test(trimmed)) errors[field] = `${label} must not contain control characters.`;
+        return trimmed;
+    };
+    const firstname = readName('firstname', 'First name');
+    const lastname = readName('lastname', 'Last name');
+    const name = `${firstname} ${lastname}`;
+    if (firstname && lastname && name.length > 255) {
+        errors.lastname = 'First and last name combined must not exceed 255 characters, including the separating space.';
+    }
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!email || email.length > 255 || !yup.string().email().isValidSync(email) ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /[\u0000-\u001f\u007f]/.test(email)) {
+        errors.email = 'Enter a valid email address of at most 255 characters.';
+    }
+    const institutionId = body.pmi_institution_id;
+    if (!Number.isInteger(institutionId) || institutionId < 1 || institutionId > 2147483647) {
+        errors.pmi_institution_id = 'Select a valid PMI.';
+    }
+    // Account type, active status, institution name and admin identity are server-owned.
+    if (Object.keys(errors).length) {
+        return res.status(400).json({ message: 'Please correct the highlighted fields.', errors });
+    }
+
+    let transaction;
+    let started = false;
+    try {
+        const pool = await connectToDatabase('BenefitTracker_v2');
+
+        // The existing password column is NOT NULL. No usable password is assigned or emailed.
+        const password = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 10);
+        transaction = new sql.Transaction(pool);
+        await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+        started = true;
+        const existing = await new sql.Request(transaction)
+            .input('email', sql.NVarChar(255), email).query(`
+                SELECT TOP 1 id FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
+                WHERE LOWER(LTRIM(RTRIM(email))) = @email
+            `);
+        if (existing.recordset.length) {
+            await transaction.rollback();
+            started = false;
+            return res.status(409).json({ message: 'An account with this email already exists.', errors: { email: 'An account with this email already exists.' } });
+        }
+        const institution = await new sql.Request(transaction)
+            .input('id', sql.Int, institutionId).query(`
+                SELECT id, name FROM dbo.PMIs WHERE id = @id AND is_active = 1
+            `);
+        if (!institution.recordset.length) {
+            await transaction.rollback();
+            started = false;
+            return res.status(400).json({ message: 'Select an active PMI.', errors: { pmi_institution_id: 'The selected PMI does not exist or is inactive.' } });
+        }
+        const result = await new sql.Request(transaction)
+            .input('name', sql.NVarChar(255), name)
+            .input('email', sql.NVarChar(255), email)
+            .input('password', sql.VarChar(255), password)
+            .input('pmiId', sql.Int, institution.recordset[0].id)
+            .input('pmiName', sql.NVarChar(200), institution.recordset[0].name)
+            .query(`
+                INSERT INTO dbo.Users
+                    (name, email, password, account_type, pmi_institution_id,
+                     pmi_institution_name, is_active, role_id, branch, ff_user_id,
+                     created_at, modified_at, user_picture_path, user_name,
+                     otp_ver, otp_createdAt, picture, picture_type, role2_id)
+                OUTPUT INSERTED.id
+                VALUES (@name, @email, @password, 'pmi', @pmiId, @pmiName, 1,
+                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+            `);
+        await transaction.commit();
+        started = false;
+        return res.status(201).json({
+            userCreated: true,
+            userId: result.recordset[0].id,
+            invitationSent: false,
+            message: 'PMI user created. Password setup invitation is pending implementation.',
+        });
+    } catch (error) {
+        if (started) {
+            try { await transaction.rollback(); } catch (rollbackError) {
+                console.error('PMI user transaction rollback failed:', rollbackError);
+            }
+        }
+        if ([2601, 2627].includes(error.number)) {
+            return res.status(409).json({ message: 'An account with these details already exists.' });
+        }
+        console.error('Error adding PMI user:', error);
+        return res.status(500).json({ message: 'Unable to add PMI user.' });
+    }
+});
+
 router.post('/add-user', async (req, res) => {
     const { adminId, usersToAdd } = req.body;
     console.log('paayload: ', usersToAdd);
@@ -110,7 +214,7 @@ router.post('/add-user', async (req, res) => {
 
     try {
         const pool = await connectToDatabase('PFA');
-        const poolB = await connectToDatabase('BenefitTracker');
+        const poolB = await connectToDatabase('BenefitTracker_v2');
         const existingUsers = [];
 
         for (const agent of usersToAdd) {
@@ -255,7 +359,7 @@ router.post('/add-user', async (req, res) => {
 router.put('/enable-user', async (req, res) => {
     const { adminId, id } = req.body;
 
-    const poolB = await connectToDatabase('BenefitTracker');
+    const poolB = await connectToDatabase('BenefitTracker_v2');
     const result = await poolB.request()
         .input('id', sql.Int, id)
         .query(`UPDATE BenefitTracker_v2.dbo.Users
@@ -286,7 +390,7 @@ router.put('/enable-user', async (req, res) => {
 router.put('/disable-user', async (req, res) => {
     const { adminId, id } = req.body;
 
-    const poolB = await connectToDatabase('BenefitTracker');
+    const poolB = await connectToDatabase('BenefitTracker_v2');
     const result = await poolB.request()
         .input('id', sql.Int, id)
         .query(`UPDATE BenefitTracker_v2.dbo.Users
@@ -317,7 +421,7 @@ router.put('/change-user-role', async (req, res) => {
     const { adminId, userId, roleId } = req.body;
     const role_id = parseInt(roleId);
 
-    const poolB = await connectToDatabase('BenefitTracker');
+    const poolB = await connectToDatabase('BenefitTracker_v2');
     const result = await poolB.request()
         .input('userId', sql.Int, userId)
         .input('role_id', sql.Int, role_id)
@@ -356,7 +460,7 @@ router.put('/assign-assistant-reviewer', async (req, res) => {
 
     try {
         const poolB = await connectToDatabase('BenefitTracker_v2');
-        
+
         const result = await poolB.request()
             .input('taskOwnerId', assistantId)
             .input('taskOwner', assistantName)
@@ -409,7 +513,7 @@ router.put('/restore-reviewer', async (req, res) => {
     const { adminId, reviewerId } = req.body;
 
     try {
-        const poolB = await connectToDatabase('BenefitTracker');
+        const poolB = await connectToDatabase('BenefitTracker_v2');
 
         const result = await poolB.request()
             .input('origReviewerId', reviewerId)
@@ -448,7 +552,7 @@ router.put('/new-benefit-officer', async (req, res) => {
     console.log('newOfficer: ', newOfficerId, "currentOfficerId: ", currentOfficerId);
 
     try {
-        const poolB = await connectToDatabase('BenefitTracker');
+        const poolB = await connectToDatabase('BenefitTracker_v2');
 
         const result = await poolB.request()
             .input('origReviewerId', reviewerId)

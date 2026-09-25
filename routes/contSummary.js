@@ -525,6 +525,8 @@ const contSummary = async (pin) => {
                 
                 `);
 
+                console.log('BalResult: ', results.recordsets[0][0])
+
                 return results.recordsets[0][0]
 
             }
@@ -541,5 +543,6 @@ const contSummary = async (pin) => {
 
 
 }
+
 
 module.exports = { contSummary }
